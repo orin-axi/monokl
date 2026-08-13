@@ -44,4 +44,20 @@ pub enum MonoklError {
     /// AC-006.
     #[error("regex compilation failed")]
     RegexBuild(#[from] grep_regex::Error),
+
+    /// AC-007: `path` is deliberately `std::path::PathBuf`, not
+    /// `Utf8PathBuf` -- the entire point of this variant is that the path
+    /// is not valid UTF-8, so it cannot be represented as camino's
+    /// UTF-8-guaranteed type.
+    #[error("non-UTF-8 path encountered: {path:?}")]
+    NonUtf8Path { path: std::path::PathBuf },
+
+    /// AC-008.
+    #[error("query has too many terms: {count} > {limit}")]
+    TooManyTerms { count: usize, limit: usize },
+
+    /// AC-009: constructed at
+    /// `tiktoken_rs::o200k_base().map_err(|_| MonoklError::TokenizerInit)?`.
+    #[error("tokenizer init failed")]
+    TokenizerInit,
 }
