@@ -1,0 +1,750 @@
+Take a look at the ~/Projects/plugin-agents repo to understand our new SDD + semantic model way of coding + examples of our specs in the ~/Projects/callisto repo. We would like to comprehensively review our current codebase in the context of our goals to formulate specs and validate against those.
+
+  We want to make sure we're thinking about the entire library of crates across the entire repo when considering changes. Considering comphrehensively how our code is modeled and works together. We want to semantically model our architecture and address any issues/bugs within that semantic model view.
+
+---
+
+From the original doc can we prepare the full spec?
+
+---
+
+Keep going with what is spec’d out
+
+---
+
+Let's dig into the active things
+
+---
+
+yes
+
+---
+
+Let's make sure they are at the same confidence level please before we move to track 5
+
+---
+
+Proceed with a very high level of rigour to have a very well flushed out spec for implementeation. Think through corner cases, not jut the happy path right?
+
+---
+
+I've updated and installed plugins now
+
+---
+
+Did you finish??
+
+---
+
+Commit and keep going
+
+---
+
+Translate it into test code and tests. please.
+
+---
+
+Also consider how much of michi can we reuse? ~/projects/michi
+
+---
+
+What can we reuse from the crates and implementation itself? As we publish michi crates? Look at all the specs
+
+---
+
+<task-notification>
+<task-id>aee8854b5c5515df9</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-monokl/57770ee1-28ed-468a-a817-1e154e82efc2/tasks/aee8854b5c5515df9.output</output-file>
+<status>completed</status>
+<summary>Agent "Map michi's crate capabilities" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result># michi Ecosystem Report (for monokl reuse decisions)
+
+Read directly: all `src/*.rs` in the 5 crates, `README.md`, `ARCHITECTURE.md`, `CLAUDE.md`, `PRINCIPLES.md`, `CONTRIBUTING.md`, `docs/spec/02-toon-format.md`, `docs/spec/03-rust-api.md`, `docs/spec/06-decisions.md`, all 5 `Cargo.toml` files, `examples/*.rs`, and representative tests (`tests/snapshot_tests.rs`, `tests/kv_integration.rs`, `tests/toon_integration.rs`). Repo state: git tag `v0.1.0` exists; **not yet confirmed published to crates.io** (network check to the crates.io API was blocked by their bot policy, not by a "not found"). `docs/spec/06-decisions.md` explicitly states crates.io publish is "gated behind at least one real consumer integration test," and recommends git-tag dependency (`michi = { git = "...", tag = "v0.x.y" }`) during development — monokl would plausibly be that integration test.
+
+---
+
+## 1. `michi-toon` (`/Users/gabe/Projects/michi/crates/michi-toon/src/`)
+
+**Purpose:** Renders a flat, tabular list of rows into the TOON text format — a header line (`type_name[count]{field,field,...}:`) stating field names once, followed by comma-separated rows. Also does the reverse for `serde`-serializable structs when the `serde` feature is on.
+
+**Public API:**
+- `pub struct Value` (enum): `Str(CompactString)`, `Int(i64)`, `Float(f64)`, `Bool(bool)`, `Null`. `From&lt;&amp;str|String|CompactString|Cow&lt;str&gt;|i32|u32|i64|u64|usize|f32|f64|bool|Option&lt;String&gt;&gt;` impls. `Display`.
+- `pub struct ToonOptions { type_name, fields: Vec&lt;String&gt;, rows: Vec&lt;Vec&lt;Value&gt;&gt;, total_count: Option&lt;usize&gt;, hints: Vec&lt;String&gt;, max_cell_len: usize }` (`#[non_exhaustive]`), builder methods `new()`, `.total_count()`, `.hints()`, `.max_cell_len()` (default 200), and `.validate() -&gt; Result&lt;(), ToonError&gt;` — **opt-in**, not called automatically by `render_toon()`.
+- `pub fn render_toon(opts: &amp;ToonOptions) -&gt; String` — never errors; sanitizes bad input in place (structural chars in headers/hints are replaced with `_`) rather than rejecting it.
+- `pub enum ToonError { InvalidTypeName, InvalidFieldName, RowLengthMismatch, InvalidItem }`.
+- `pub fn escape_value(v: &amp;str) -&gt; Cow&lt;str&gt;` / `escape_value_quoted(v: &amp;str) -&gt; String`.
+- `#[cfg(feature = "serde")] pub fn list&lt;T: Serialize&gt;(type_name, items: &amp;[T]) -&gt; Result&lt;String, ToonError&gt;` — serializes each item via `serde_json::to_value`, requires the result be a JSON object (struct/map); scalars/arrays error with `InvalidItem`.
+
+**Cargo features:** `default = []` (zero deps beyond `compact_str`, which is a mandatory dep, not feature-gated). `serde = ["dep:serde", "dep:serde_json"]` — required for `toon::list()`. `schemars` — derives `JsonSchema` on `ToonOptions`/`Value`.
+
+**Usage patterns (from examples/tests):**
+- Manual construction: build `ToonOptions` by hand with typed `Value` rows (the `examples/basic_toon.rs` / README pattern) — this is the primary intended path for a CLI tool with already-structured data.
+- `toon::list()` for "I have a `Vec&lt;MySerdeStruct&gt;`, just render it" (needs `serde` feature). Field order comes from the first non-empty item's serialized key order (`serde_json::to_value` with the workspace's `preserve_order` feature enabled, so struct field order is preserved, not alphabetized).
+- Long cell strings are auto-truncated per-cell via `michi_truncate::truncate_inline` when they exceed `max_cell_len`, embedding the `(N chars truncated — use full=true)` marker inline in the cell.
+
+**Important gaps for a downstream consumer (verified, not guessed):**
+- **No nested/table structures.** TOON itself (per `docs/spec/02-toon-format.md`'s grammar) is strictly one header + flat rows — no nested TOON blocks. In `toon::list()`, a struct field that's an array/object gets JSON-stringified and dropped into a single quoted cell (confirmed by test `list_stringifies_nested_values_losslessly`: `tags: Vec&lt;String&gt;` becomes cell value `"[\"a\",\"b\"]"`). There is no recursive/multi-table TOON renderer.
+- **No parser in the public API**, despite the crate's own `Cargo.toml` description saying "renderer and parser." The only TOON parser in the repo is `tests/support/toon_parser.rs`, explicitly documented as "Test-only ... NOT part of the public API ... not a general-purpose TOON parser for untrusted input." `ARCHITECTURE.md`'s mention of a "`ToonSerializer`" type is also aspirational/inaccurate — no such type exists in `src/`.
+- Row length is not validated by `render_toon()` itself — mismatches are silently rendered (missing cells → empty; the `#[cfg(debug_assertions)] debug_assert!` in `render.rs` would panic in debug builds, but that's dev-only). Call `.validate()` explicitly if you need hard errors.
+
+**Dependencies on siblings:** depends on `michi-truncate` (for per-cell truncation). Depends on nothing else in the workspace.
+
+---
+
+## 2. `michi-truncate` (`/Users/gabe/Projects/michi/crates/michi-truncate/src/lib.rs`)
+
+**Purpose:** Truncate a string to at most N Unicode **scalar values (chars)** — not bytes, not model tokens — at a UTF-8 char boundary, appending a human/agent-readable marker describing what was cut and how to get the rest.
+
+**Public API (the entire crate is ~90 lines of non-test code):**
+```rust
+pub struct Truncated {
+    pub content: String,
+    pub original_len: usize,      // original BYTE length (not char count)
+    pub was_truncated: bool,
+    pub signal: Option&lt;String&gt;,   // the marker text actually embedded in `content`
+}
+
+pub fn truncate(content: &amp;str, max_chars: usize, hint: &amp;str) -&gt; Truncated;
+pub fn truncate_inline(content: &amp;str, max_chars: usize, hint: &amp;str) -&gt; String; // == truncate(...).content
+```
+
+**Algorithm (exact, confirmed by reading the code):**
+- Fast-path: if `content.len() &lt;= max_chars` (byte length), return unchanged (byte length ≥ char count, so this implies char count also fits) — `was_truncated: false`, `signal: None`.
+- Otherwise compute real `char_count`; if that's also `&lt;= max_chars`, still unchanged.
+- Otherwise: build suffix `" ({char_count} chars truncated — use {hint})"`, compute how many content chars can be kept (`max_chars - suffix_chars`, saturating), slice at that char boundary via `char_indices().nth(...)`, append the suffix, then hard-cap the whole result to `max_chars` chars again in case the suffix alone is longer than `max_chars` (tiny `max_chars` or long `hint` string) — trims via char boundary, never mid-codepoint.
+- `signal` is recomputed from what's *actually* left in `content` after the hard-cap (trimmed of leading space) — `None` if there was no room for any signal text, otherwise guaranteed to literally appear in `content`.
+
+**Answering the task's specific questions:**
+- Unit is **chars (Unicode scalars)**, not bytes and not LLM tokens — there is no tokenizer dependency anywhere in this crate or workspace (`Cargo.toml` has zero `[dependencies]`).
+- Truncation marker: yes, `" ({n} chars truncated — use {hint})"`, caller-supplied `hint` string (e.g. `"full=true"`) is meant to tell the agent how to get the untruncated content (e.g., a param name to pass on the next call).
+- Return value: `Truncated` struct with the content **and** metadata (`original_len`, `was_truncated`, `signal`) — not just a bare string. `truncate_inline()` is a convenience that discards the metadata and returns only the string (this is what `michi-toon`'s per-cell truncation calls).
+
+**Cargo features:** none; `default = []`, zero dependencies.
+
+**Note:** `PRINCIPLES.md` sketches a hypothetical future `TruncationOutcome&lt;T&gt;` / `truncate_by_count` / `truncate_by_bytes` API as a *worked example of design philosophy* ("split the decision from the signal") — **this is not implemented**. Don't mistake it for shipped API; the only truncation primitive that exists today is the char-based `truncate()`/`truncate_inline()` above.
+
+**Dependencies on siblings:** none — this is the most upstream crate; everything else depends on it (directly or transitively).
+
+---
+
+## 3. `michi-resilience` (`/Users/gabe/Projects/michi/crates/michi-resilience/src/lib.rs`)
+
+**Purpose:** Pure math/parsing for retry decisions — **not** an actual retry executor, HTTP client wrapper, or circuit breaker. It computes "how long should I wait before retry N" and parses `Retry-After`; the caller still owns the actual retry loop.
+
+**Public API:**
+```rust
+pub struct RetryConfig { pub max_retries: u32, pub base_delay: Duration, pub max_delay: Duration, pub jitter_factor: f64 } // #[non_exhaustive]
+impl RetryConfig {
+    pub fn new(max_retries, base_delay, max_delay, jitter_factor) -&gt; Self;        // clamps invalid inputs silently
+    pub fn try_new(...) -&gt; Result&lt;Self, RetryConfigError&gt;;                        // strict, errors on invalid inputs
+}
+impl Default for RetryConfig; // max_retries=3, base_delay=500ms, max_delay=30s, jitter_factor=0.2
+
+pub enum RetryConfigError { MaxDelayIsZero, BaseDelayExceedsMaxDelay{base,max}, JitterFactorOutOfRange{factor} }
+
+pub fn next_retry_delay(config: &amp;RetryConfig, attempt: u32, jitter_seed: f64, retry_after: Option&lt;Duration&gt;) -&gt; Option&lt;Duration&gt;;
+// None once attempt &gt;= max_retries. jitter_seed is caller-supplied random [0,1] — crate has no RNG dependency.
+// Delay = max(exponential-backoff-with-jitter, retry_after), capped at max_delay.
+
+pub fn parse_retry_after(header_value: &amp;str) -&gt; Option&lt;Duration&gt;;                  // RFC 7231 Retry-After: seconds or HTTP-date
+pub fn parse_retry_after_at(header_value: &amp;str, now: SystemTime) -&gt; Option&lt;Duration&gt;; // testable variant, explicit "now"
+pub fn is_retryable_status(status: u16) -&gt; bool;  // true only for 429, 502, 503, 504 (NOT 500 — deliberate, tested)
+
+pub struct IdempotencyKey(pub String);
+impl IdempotencyKey {
+    pub fn new(s: impl Into&lt;String&gt;) -&gt; Self;
+    pub fn as_str(&amp;self) -&gt; &amp;str;
+    pub fn from_hash(operation: &amp;str, data: &amp;[u8]) -&gt; Self;  // FNV-1a 64-bit hash, formatted "{operation}:{hash:016x}"
+}
+// From&lt;String&gt;, From&lt;&amp;str&gt; also implemented.
+
+pub enum AlreadyDone { Yes { result: String }, No } // #[non_exhaustive]
+pub fn already_done(stored: Option&lt;String&gt;) -&gt; AlreadyDone;
+pub fn render_already_done(operation: &amp;str, summary: &amp;str, hints: &amp;[String]) -&gt; String;
+```
+
+**Cargo features:** none; `default = []`, zero dependencies at all (`[dependencies]` section is empty).
+
+**Usage pattern:** caller supplies its own RNG for `jitter_seed`, its own HTTP client, and its own storage for idempotency lookups; this crate just does the arithmetic/parsing/formatting around those. `is_retryable_status` deliberately excludes 500 (documented reasoning in a test: "500 is a server bug — retrying reproduces it and risks duplicate side effects on writes").
+
+**No circuit breaker, no async, no actual retry loop.** `docs/spec/06-decisions.md` confirms this is intentional: an async `CircuitBreaker` and retry-wrapper are explicitly deferred to a future, not-yet-built `pipeline` crate (which would depend on tokio) — they are called out as *not* belonging in `michi-resilience` because that crate must stay dependency-free and sync.
+
+**Dependencies on siblings:** none.
+
+---
+
+## 4. `michi-core` (`/Users/gabe/Projects/michi/crates/michi-core/src/`)
+
+**Purpose:** The high-level composition layer — turns hints/errors/lists/kv-pairs/status into ready-to-print agent text or an MCP `CallToolResult`. This is the crate most directly reusable for a CLI/agent tool's output layer.
+
+**Modules and API surface** (`crates/michi-core/src/lib.rs` re-exports everything flat too, and the root `michi` crate re-exports `michi-core`'s items flat again — so `michi::DomainError`, `michi_core::DomainError`, and `michi_core::error::DomainError` all resolve to the same type):
+
+**`error.rs`** — the module the task asked to prioritize:
+```rust
+pub enum ErrorClass { User, Internal, Transient }  // #[non_exhaustive]
+pub struct Sensitive&lt;T&gt;(pub T);  // Debug/Display both print "&lt;redacted&gt;" — for secrets in error context
+
+pub enum ErrorCode { InvalidInput, NotFound, Unauthorized, Forbidden, Conflict, RateLimited, Unavailable, Timeout, ExternalFailure } // #[non_exhaustive]
+impl ErrorCode {
+    pub fn label(&amp;self) -&gt; &amp;'static str;               // snake_case label, e.g. "not_found"
+    pub fn is_retryable_by_default(&amp;self) -&gt; bool;      // true for RateLimited/Unavailable/Timeout/ExternalFailure
+    pub fn default_class(&amp;self) -&gt; ErrorClass;          // maps code -&gt; User or Internal
+}
+
+pub struct DomainError { pub code: ErrorCode, pub message: String, pub hints: Vec&lt;Hint&gt;, pub recovery: Option&lt;RecoveryHint&gt;, pub retryable: bool, pub retry_after: Option&lt;Duration&gt; } // #[non_exhaustive]
+impl DomainError {
+    pub fn new(code: ErrorCode, message: impl Into&lt;String&gt;) -&gt; Self;  // retryable defaults from code.is_retryable_by_default()
+    pub fn hint(self, hint: impl Into&lt;String&gt;) -&gt; Self;               // builder, chainable
+    pub fn recovery(self, r: RecoveryHint) -&gt; Self;
+    pub fn retryable(self, retryable: bool) -&gt; Self;
+    pub fn retry_after(self, d: Duration) -&gt; Self;
+    pub fn exit_code(&amp;self) -&gt; i32;                     // always 1
+    pub fn render(&amp;self) -&gt; String;                     // "error: &lt;label&gt;\nmessage: &lt;msg&gt;\nexit_code: 1\n" + help[]/recovery[] blocks
+    pub fn render_github_annotation(&amp;self) -&gt; String;    // "::error title=&lt;label&gt;::&lt;msg&gt;" with \n/\r percent-encoded
+    pub fn render_json(&amp;self) -&gt; String;                 // hand-rolled JSON: {"isError":true,"error":...,"message":...,"retryable":bool,"hints":[...],"recovery":null|{...}}
+    pub fn to_call_tool_result(&amp;self) -&gt; CallToolResult;  // is_error:true, content = [render()], structured_content = render_json()
+}
+impl Display, std::error::Error for DomainError.
+#[cfg(feature="miette")] impl miette::Diagnostic for DomainError  // ONLY implements code() and help() — no source spans, no derive, no labels/severity
+
+pub enum Error { InvalidInput(String), NotFound(String), Domain(#[from] DomainError) }  // #[non_exhaustive], thiserror-derived
+impl Error { pub fn render(&amp;self) -&gt; String; pub fn exit_code(&amp;self) -&gt; i32; pub fn class(&amp;self) -&gt; ErrorClass; pub fn is_retryable(&amp;self) -&gt; bool; }
+```
+Note: `render_json()`/`to_call_tool_result()` build JSON via hand-written string escaping (`crate::kv::json_escape_str`), not `serde_json` — works even without the `serde` feature.
+
+**`mcp.rs`** — MCP integration, always compiled (no feature gate):
+```rust
+pub struct ContentBlock { pub text: String, pub audience: Vec&lt;Audience&gt; } // #[non_exhaustive]
+pub struct CallToolResult { pub content: Vec&lt;ContentBlock&gt;, pub is_error: bool, pub structured_content: String } // #[non_exhaustive]
+```
+With `serde` feature: both get custom wire-shape mapping (`ContentBlockWire` renders `type: "text"`, `annotations: { audience }`; `CallToolResultWire` parses `structured_content` from a JSON string into a `serde_json::Value` and back) — this is the piece that would matter if monokl exposes an actual MCP tool endpoint.
+
+**`response.rs`** — `AgentResponse`, the main builder, fluent/chainable, `#[non_exhaustive]`:
+```rust
+pub enum OutputFormat { #[default] Text, Json }
+pub const DEFAULT_TRUNCATE_CELLS: usize = 200;
+impl AgentResponse {
+    pub fn new(type_name: impl Into&lt;String&gt;) -&gt; Self;
+    pub fn items(self, rows: Vec&lt;Vec&lt;Value&gt;&gt;, fields: &amp;[&amp;str]) -&gt; Self;   // sets TOON render path
+    pub fn kv_items(self, items: Vec&lt;KvItem&gt;) -&gt; Self;                    // sets KV render path
+    pub fn total_count(self, n: usize) -&gt; Self;
+    pub fn hint(self, hint: impl Into&lt;String&gt;) -&gt; Self;
+    pub fn hints(self, hints: Vec&lt;Hint&gt;) -&gt; Self;
+    pub fn recovery_hint(self, r: RecoveryHint) -&gt; Self;
+    pub fn truncate_cells_at(self, limit: usize) -&gt; Self;
+    pub fn as_error(self) -&gt; Self;
+    pub fn human_content(self, text: impl Into&lt;String&gt;) -&gt; Self;         // dual assistant/user output
+    pub fn render(&amp;self, format: OutputFormat) -&gt; String;
+    pub fn render_toon(&amp;self) -&gt; String;
+    pub fn render_kv(&amp;self) -&gt; String;
+    pub fn render_hints_only(&amp;self) -&gt; String;
+    pub fn render_for(&amp;self, audience: Audience) -&gt; String;              // Assistant -&gt; render_text(); User -&gt; human_content or fallback to text
+    pub fn has_human_content(&amp;self) -&gt; bool;
+    pub fn to_call_tool_result(&amp;self) -&gt; CallToolResult;
+}
+```
+Note: `docs/spec/03-rust-api.md` documents these builder methods as taking `&amp;mut self`, but **the actual code in `response.rs` uses `self` (consuming, chainable) builder style** — the spec doc is stale here; trust the source.
+
+**Other modules:** `audience.rs` (`enum Audience { Assistant, User }`), `hints.rs` (`struct Hint(pub String)`, `render_hints`/`append_hints` — produces `help[N]:\n  ...` blocks), `recovery.rs` (`struct RecoveryHint { tool, params: Vec&lt;(String,KvValue)&gt;, reason: Option&lt;String&gt; }`, `.param()`/`.reason()` builders, `render_recovery`/`append_recovery` — produces `recovery[N]:\n  tool: suggestedParams: { k: v } — reason` lines), `kv/mod.rs` (`struct KvItem{key,value}`, `enum KvValue{Text,Int,Float(f64,u8),Bool,Duration,Missing}`, `render_kv(items, total_count, hints) -&gt; String` — column-aligned `key: value` block, `Missing` renders as em-dash `—`), `status.rs` (`enum Health{Ok,Degraded(String),Error(String)}`, `StatusItem`, `StatusResponse::new/with_hints/render` — `tool:`/`description:` lead lines + per-item health annotations `[DEGRADED: ...]`/`[ERROR: ...]`), `idempotency.rs` (`FailedOp`, `PartialSuccess{completed,failed,skipped}.render()/.exit_code()` — for partially-completed multi-step ops, distinct from `michi-resilience::AlreadyDone` which is for fully-completed-before ops), `empty.rs` (`empty_state(type_name)`, `empty_state_with_hints` — `"type[0]{}:\ntotalCount: 0\n"`), `pipeline/mod.rs` (`PipelineStep`, `Pipeline{id,steps}.render()` — pure data + TOON-style render only; no execution, execution is deferred to the not-yet-built async pipeline crate), `telemetry/mod.rs` (`NoopProvider` — literally does nothing, `.span()`/`.count()` are no-ops; a zero-cost placeholder for future real telemetry).
+
+**Cargo features:** `default = []`. `serde = ["dep:serde","dep:serde_json","michi-toon/serde"]` — needed for `Audience`/`Hint`/`KvValue`/`ContentBlock`/`CallToolResult` `Serialize`/`Deserialize` and the wire-shape mapping. `schemars = ["dep:schemars","michi-toon/schemars"]` — needed for `JsonSchema` derives (useful for MCP `outputSchema` generation) on most public structs. `miette = ["dep:miette"]` — needed only if you want `DomainError` to implement `miette::Diagnostic` (very thin: just `code()`+`help()`).
+
+**Dependencies on siblings:** depends on `michi-truncate`, `michi-resilience`, and `michi-toon` (uses `michi_toon::escape_value`/`escape_value_quoted` in `idempotency.rs` and `pipeline/mod.rs`, and `michi_toon::Value`/`ToonOptions`/`render_toon` in `response.rs`). Also re-exports `michi_resilience::*` and `michi_truncate::*` at its own root (`pub use michi_resilience::*; pub use michi_truncate::*;` in `lib.rs`), so `michi_core::RetryConfig`, `michi_core::truncate`, etc. all resolve too.
+
+---
+
+## 5. Root `michi` facade (`/Users/gabe/Projects/michi/src/lib.rs`)
+
+Ten lines of real logic: `#![deny(unsafe_code)] #![warn(missing_docs)]`, then:
+```rust
+pub use michi_core::*;
+pub use michi_resilience as resilience;
+pub use michi_toon as toon;
+pub use michi_truncate as truncate;
+#[cfg(feature = "napi")] pub mod napi;
+pub type Result&lt;T&gt; = std::result::Result&lt;T, michi_core::Error&gt;;
+```
+So everything from `michi-core` (which itself re-exports `michi-resilience` and `michi-truncate`) is available flat at `michi::*`, while `michi-toon` is namespaced under `michi::toon::*` only (not flattened at the root — confirmed by `tests/toon_integration.rs`'s `crate_root_reexports_are_reachable` test, which accesses `michi::render_kv`, `michi::Hint`, `michi::AlreadyDone`, `michi::RetryConfig`, `michi::Truncated`, `michi::truncate`/`truncate_inline` directly at root, but always reaches TOON types via `michi::toon::...`).
+
+**Cargo features on the facade crate:** `default = []`. `napi = [...]` — Node.js bindings only, irrelevant to a Rust consumer like monokl. `serde`, `schemars`, `miette` — simple pass-throughs that turn on the corresponding sub-crate features.
+
+`src/napi.rs` / `src/napi.rs/num.rs` and `packages/michi-node/` are the Node.js NAPI binding layer — not relevant to a Rust-only consumer; only compiled under the `napi` feature.
+
+---
+
+## Dependency graph among the five crates
+
+```
+michi-truncate   (zero deps — most upstream)
+      ^
+      |
+michi-resilience (zero deps, no dependency on truncate or toon)
+      ^
+      |
+michi-toon  ---depends on---&gt; michi-truncate
+      ^
+      |
+michi-core  ---depends on---&gt; michi-truncate, michi-resilience, michi-toon
+      ^
+      |
+michi (facade) ---depends on---&gt; all four above, re-exports them
+```
+Confirmed directly from each crate's `Cargo.toml [dependencies]` section: `michi-resilience` has zero deps (not even on `michi-truncate`); `michi-toon` depends only on `michi-truncate` + `compact_str`; `michi-core` depends on all three primitive crates + `thiserror`; the root `michi` crate depends on all four workspace crates by path (version `"0.1.0"` pins, so a git-tag dependency would need all four to be tagged together, which the single `v0.1.0` workspace tag already satisfies).
+
+---
+
+## Practical implications for monokl
+
+1. **Reuse `michi-toon::{ToonOptions, Value, render_toon}` directly** for any tabular/list agent output monokl needs — it's a complete, tested implementation matching the format monokl's spec presumably already targets (michi's own `docs/spec/02-toon-format.md` is the TOON grammar). Don't hand-roll TOON escaping/truncation — `escape_value`, `sanitize_header_token` and the max-cell-len truncation logic already handle the edge cases (commas, quotes, newlines, NaN/Inf floats, structural chars in headers).
+2. **`michi-core::response::AgentResponse`** is the highest-leverage single reuse point if monokl wants a unified builder for TOON-list-or-KV output plus hints/recovery/error/MCP-result assembly — it composes nearly everything else in the workspace.
+3. **`michi-core::error::DomainError`** is a ready-made typed error model (code/class/hints/recovery/retryable/retry_after) with three render targets (agent text, GitHub Actions annotation, JSON) and an MCP `CallToolResult` conversion — likely reusable wholesale rather than reinventing monokl's own error-rendering.
+4. **`michi-truncate::truncate`** truncates by **character count**, not tokens or bytes — if monokl needs actual LLM-token-budget truncation, this crate does not provide that; it would need to be layered on top (e.g., feed a token-estimated char budget into `truncate()`).
+5. **`michi-resilience`** gives retry-delay math and `Retry-After` parsing only — if monokl needs an actual retry-executing HTTP wrapper or a circuit breaker, that does not exist yet anywhere in this workspace (explicitly deferred to a future `pipeline` crate per `docs/spec/06-decisions.md`).
+6. **No TOON parser exists as public API** — if monokl needs to *read* TOON (not just emit it), that would have to be written new; michi does not supply it despite package descriptions implying otherwise.
+7. **Not yet on crates.io** — monokl would depend via git tag (`michi = { git = "https://github.com/orin-axi/michi", tag = "v0.1.0" }`, plus corresponding `michi-core`/`michi-toon`/etc. path deps are internal so a single top-level `michi` git dep should suffice) per the project's own stated interim recommendation, and per `PRINCIPLES.md`, monokl adopting it for real would itself count as the "real consumer integration" that's gating the eventual crates.io release.</result>
+<usage><subagent_tokens>133694</subagent_tokens><tool_uses>48</tool_uses><duration_ms>199998</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a4954d1ba591a39bb</task-id>
+<tool-use-id>toolu_01FKpH7xJxkaadRRABEMyu7H</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-monokl/57770ee1-28ed-468a-a817-1e154e82efc2/tasks/a4954d1ba591a39bb.output</output-file>
+<status>completed</status>
+<summary>Agent "Sweep monokl specs for michi overlap" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Findings: monokl spec corpus vs. shared "agent-ergonomic output primitives" (michi)
+
+Read all 7 files in full (`01`–`07`, ~9,190 lines). One meta-finding first: **michi is never discussed as a design option anywhere in the corpus.** The string "michi" appears exactly once, at `02-inspection-and-analysis.md:1713`, only as a workspace-crate-name literal inside an import-classifier allowlist (`monokl`/`michi`/`firkin`/`lumen`/`pulse`/...) — recognizing michi as a sibling crate for import-bucketing purposes, not as a dependency for output rendering. "TOON" appears zero times. `05-research-and-decisions.md`, despite being an exhaustive 200-line decision log covering SCIP, LSP, ast-grep, difftastic, embedding rerank, and more, never once raises "should our output/error/truncation layer be a shared crate" as a question — this exact question has had no research pass at all.
+
+---
+
+### 1. Output / response rendering
+
+- **`01-core-architecture.md:2401-2441`** — `output.rs` v1: `render_json`/`render_json_compact`/`render_output` hand-roll the pretty-vs-compact JSON decision via `std::io::stdout().is_terminal()`; `fatal()` and `render_error()` are hand-rolled stdout/stderr exit paths.
+- **`01-core-architecture.md:2436-2441`** — `render_error` builds a JSON error envelope via raw string interpolation: `println!("{{\"error\": \"{err}\"}}")` — not structured serialization, a hand-built JSON string.
+- **`01-core-architecture.md:2525`** — Explicit self-acknowledged inconsistency: the inline `TokenCountResult` in `main.rs` uses snake_case (`total_tokens`) while every other response type in the system is camelCase. A shared output-serialization layer enforcing one casing convention would prevent this by construction instead of relying on per-struct `#[serde(rename_all = "camelCase")]` discipline.
+- **`03-multi-language-platform.md:2839-2933`** ("`output.rs` — updated rendering") — A large hand-rolled presentation-resolution engine: `ResolvedProfile{Agent,Human}`, `ResolvedFormat{Json,Minimal,Text,Mermaid,Schema}`, `Presentation{profile,detail,format,use_color,pretty_json}`, `RenderKind{Structured,RankedList,Summary,Symbols,Graph}`, and `resolve_presentation()` (lines 2864-2909) resolving TTY/agent-vs-human/format/color from five overlapping flags. Plus ~10 per-command hand-written text renderers (`render_search_text`, `render_symbols_text`, `render_dependents_mermaid`, etc., lines 2912-2922) and ANSI color helpers (`human_heading`/`human_score`/etc., lines 2924-2928) built on `owo-colors`. This is a full bespoke "agent output mode vs. human output mode" resolution layer — exactly the shape of thing a shared output-primitives crate would centralize once four tools (monokl/Firkin/Lumen/Pulse) each need "is this call an agent or a human, and how verbose should the answer be."
+- **`03-multi-language-platform.md:1570-1749`** (`projection.rs`) — A complete hand-rolled JSON field-projection/pruning system: `project_fields` (dot-notation field selection), `project_search_response`/`project_inspect_result` (per-command field allowlists with hardcoded aliasing `"snippet"→"code"`, `"score"→"finalScore"`), and `prune_empty` (drops null/false/0/empty-string/empty-array/empty-object recursively — the entire implementation of `--format minimal`). The module doc comment itself says: *"CLI and MCP surfaces both need compact, question-shaped output. Projection lives in the library so those surfaces can share one contract"* (line 1576) — this is monokl explicitly building its own version of exactly the shared-output-contract concern michi is meant to own.
+- **`03-multi-language-platform.md:2990-3018`** ("Agent tool contracts") — Monokl's own from-scratch "agent contract" spec: JSON-as-canonical-output policy, field projection, five output-format modes, capability-driven diagnostics, truncation markers, scope flags. This section is monokl inventing its own version of a cross-tool agent-output contract that a shared michi layer would otherwise standardize once across the whole orin-axi suite.
+- **`02-inspection-and-analysis.md:928-976`** ("`mnkl schema`") — A fully hand-written JSON Schema generator ("Hand-written (no `schemars`)"), ~30 per-type schema-builder functions (`react_component_schema()`, `rust_struct_schema()`, etc., enumerated at line 976) built via `serde_json::json!` macros rather than derived from the actual Rust types. The corpus even has a dedicated drift-detection test (`schema_keys_match_serialized_instance`, `02-inspection-and-analysis.md:1889-1896`) whose sole purpose is catching divergence between this hand-maintained schema and the real serialized output — a problem a shared, type-derived schema mechanism would eliminate structurally instead of testing for.
+- **`01-core-architecture.md:2587-2665`** — Section 24 snapshot dump shows the canonical JSON key sets per command (search/symbols/dependents/count-tokens) hand-maintained via `insta` snapshots rather than a shared schema/output-shape contract.
+
+### 2. Error rendering / diagnostic presentation
+
+- **`01-core-architecture.md:190-252`** — `MonoklError` enum: `thiserror` `#[error(...)]` strings per variant, optional `#[cfg_attr(feature = "miette", derive(miette::Diagnostic))]`. No hint/help/recoverability field on any variant — no structured "is this transient/retryable" or "here's what to do" data, only free-text `Display`.
+- **`01-core-architecture.md:228`** — `StaleDiskCache`'s error text references `mnkl init --rebuild`, a CLI subcommand that doesn't exist anywhere in the spec (confirmed dead/wrong string, flagged again at `07-edge-cases-and-failure-modes.md:38`). A shared, golden-tested error-message layer would likely catch this by construction.
+- **`01-core-architecture.md:2445-2523` + `07-edge-cases-and-failure-modes.md:54`** — **The most direct finding.** Two contradictory, un-reconciled error-output paths both exist: `output.rs::render_error` (line 2436) defines a JSON-on-stdout envelope with `exit(1)`, but `main()` (Section 22) never calls it — every command instead propagates errors through `miette::Result&lt;()&gt;` via `.into_diagnostic().wrap_err(...)`, which renders miette's fancy human-readable diagnostic to stderr. Direct quote from the edge-cases doc: *"The spec doesn't say which governs — a real problem for a tool whose value proposition is agent-parseable output."* This is precisely the kind of error-to-agent-output inconsistency a single shared error-rendering path (michi-resilience / michi-core) would prevent by only offering one canonical mechanism.
+- **`01-core-architecture.md:2892-2946`** (napi-support `boundary.rs`) — `flatten_error()` (lines 2924-2932) hand-rolls error-cause-chain flattening: `format!("{err}")` plus a manual `while let Some(s) = source` loop writing `"\n  caused by: {s}"` for each link — a from-scratch reimplementation of what a shared diagnostic-chain renderer (or even `anyhow`) already does.
+- **`01-core-architecture.md:490-504` and `02-inspection-and-analysis.md:169-184`** — `Diagnostic{kind: DiagnosticKind, path, message}` / `DiagnosticKind{Degraded,Skipped,Warning}` is defined twice (once per doc part), a free-text-message, enum-kind "soft hint" mechanism used everywhere for non-fatal warnings. It's structurally similar to what a shared hint/diagnostic type in michi-core would provide, but here it's monokl's own bespoke type with hand-written `format!()` message strings scattered per call site.
+- **`03-multi-language-platform.md:1751-1980`** (`query_support.rs`) — `add_precision_diagnostic`, `add_missing_analyzer_diagnostic`, `require_precision_capability`, `precision_label`, `language_label` are a full bespoke "diagnostic message templating" subsystem, each hand-formatting strings like `"{operation} is not supported for {lang} files in this build"` and `"{op} uses {actual}-precision {lang} analysis"` per capability-check call site.
+- **`07-edge-cases-and-failure-modes.md:71`** — *"Nearly every Part 2 command declares a `diagnostics: Vec&lt;Diagnostic&gt;` field but never describes it being populated"* — systemic under-specification of the hint/diagnostic mechanism across `refs`, `definition`, `diff`, `tokens`, `explain`, `coverage`, `data-flow`, `similar`.
+
+### 3. Truncation / budget logic
+
+- **`01-core-architecture.md:1228-1288`** (`budget.rs`) — Hand-rolled `tiktoken-rs`/`o200k_base` wrapper (`tokenizer()`, `count_tokens()`, lines 1231-1246) and `apply_budget()` (lines 1248-1286): a manual loop capping `max_results`/`max_bytes`/`max_tokens` sequentially and constructing a truncation-marker string via `format!("[+{omitted} more results omitted; refine with +term or -term]")` (line 1274). This is exactly the "cap output size, note what's omitted" concern michi-truncate is presumably built for.
+- **Three separately hand-written truncation-marker string formats**, one per command, no shared template:
+  - search: `"[+{omitted} more results omitted; refine with +term or -term]"` (`01-core-architecture.md:1274`)
+  - symbols: `"[symbol cap 500 reached; pass fewer files or increase limit]"` (`01-core-architecture.md:2330`)
+  - dependents: `"[results capped at 200; {tot_dep} dependents, {tot_imp} imports total]"` (`01-core-architecture.md:2332`, restated at `03-multi-language-platform.md:1174`)
+  This is a direct instance of "we invented our own version of X" three separate times for the same underlying concern.
+- **`05-research-and-decisions.md:24`** — Proposes extending `MonoklError` with a new `TraversalCapExceeded{visited, cap}` variant and a `TraversalReport{sites, truncated}` wrapper "rather than silently truncating a bare `Vec`," and explicitly notes *"the same bounded-BFS pattern generalizes to any of this spec's existing traversals... that don't yet have explicit cap enforcement at every site"* — i.e., monokl's own research log recognizes the cap/truncate pattern needs to be applied consistently but has no shared primitive to reach for, so it's reinventing it per traversal.
+- **`07-edge-cases-and-failure-modes.md:23`** (cross-cutting pattern) — *"Resource limits are opt-out by construction. Only `max_bytes` is clamped to a hard ceiling; `max_results`, `max_tokens`, `max_candidates`, query string length, per-file hit counts, git change-set size, and `ImpactedNeighbors` expansion are all caller-controlled with no enforced cap"* — restated per-finding at lines 43, 51-52, 118-120. A shared budget/truncation primitive that structurally requires every result-producing path to declare and enforce a cap would prevent this whole class of gap.
+- **`07-edge-cases-and-failure-modes.md:129`** — *"The 50MB `io_safety` cap and the 2MB search token/byte budget coexist with no explained relationship — a 49MB file passes the safety gate, gets fully parsed, then has virtually all output discarded by the budget."* Two independently invented size-cap systems (`io_safety.rs`'s read-size cap vs. `budget.rs`'s token/byte cap) that don't compose — a symptom of not having one shared budget abstraction spanning read-time and output-time limits.
+- **`06-daemon-architecture.md:163`** — The `PrecisionLedger` design deliberately keeps a compact `provenance` tag on every result by default, with full reasoning available only on demand via `explain` ("Default output stays terse; depth is opt-in.") — a progressive-disclosure output pattern invented ad hoc for this one subsystem rather than drawn from a shared primitive.
+
+### 4. Resilience / retry-shaped logic
+
+- **`01-core-architecture.md:3129`** — The LSP architecture description includes a genuine hand-rolled circuit breaker: *"`LspSession`... circuit breaker — 3 crashes in 60s → 'tripped', 500ms backoff."* This is real retry/backoff-shaped logic and a strong candidate for a shared michi-resilience primitive rather than a bespoke per-subsystem implementation.
+- **`06-daemon-architecture.md`** §9 "Known gaps" (lines 242-250) plus the corresponding edge-cases findings are the richest resilience-gap cluster:
+  - **`07-edge-cases-and-failure-modes.md:163`** — *"`Session(Owned)` resources have no orphan-detection or crash-recovery story, and no concurrent-ownership arbitration."*
+  - **`07-edge-cases-and-failure-modes.md:164`** — *"`PrecisionUpgrader::upgrade()` failing mid-session has no defined degrade-back-to-baseline contract... No fallback-to-cached-baseline, no re-establishment story, no circuit-breaker against crash-looping."* This explicitly names the missing piece as a circuit breaker.
+  - **`07-edge-cases-and-failure-modes.md:165`** — Kotlin/Scala's JVM-subprocess tier has no fallback-when-absent story, unlike the parallel C/C++ Clang-absent fallback — inconsistent degrade-policy across backends, i.e., no single shared "how do we fail over" primitive being reused.
+- **`06-daemon-architecture.md:184`** (§6 rule 4) — *"When only generic LSP is available and no sentinel exists, cap at `Structural`... and emit a monokl `Diagnostic` explaining the downgrade rather than guessing"* — a degrade-and-explain pattern, resilience-adjacent, hand-specified per backend rather than via a shared transient-vs-permanent-failure primitive.
+- **`07-edge-cases-and-failure-modes.md:34, 36-37`** — Cache-layer resilience gaps built entirely bespoke: no panic/stack-overflow guard around the parser in the main pipeline (unlike the napi boundary, which does wrap with `catch_unwind`, `01-core-architecture.md:2900-2932`); concurrent disk-cache writes race last-writer-wins; a genuinely corrupted `cache.json` hard-fails instead of self-healing (only the "stale version" case self-heals). The `03-multi-language-platform.md:998-1022` `fs2` advisory-lock fix (`with_cache_lock`) is monokl's own hand-rolled cross-process coordination primitive addressing part of this — another instance of building infra-level resilience machinery locally rather than drawing on a shared crate.
+
+### 5. Other agent-ergonomics concerns
+
+- **JSON key casing inconsistency** — `01-core-architecture.md:2525, 2646-2665`: `count_tokens` result uses snake_case (`total_tokens`, `tokens`, `path`) while every other command's output is camelCase (confirmed via the Section 24 snapshot dump, e.g. `search_top_level_keys` includes `totalTokens`/`truncationMarker`). A shared serialization convention would prevent this by construction.
+- **Field-alias mapping hand-written per command** — `03-multi-language-platform.md:1658-1690` (`search_projection_fields`): `"snippet" =&gt; "code"`, `"score" =&gt; "finalScore"` is a bespoke, unenforced alias table; a shared projection/alias primitive (declarative rather than a per-command `match`) would generalize this instead of requiring a new hand-written function per new command (`inspect_projection_fields` at line 1692 duplicates the same shape for a different field set).
+- **Hint/next-step text embedded as raw strings, not structured fields** — the search truncation marker (`01-core-architecture.md:1274`) tells the agent what to do next ("refine with +term or -term") entirely inside a free-text `Option&lt;String&gt;` rather than a structured "suggestion" type; likewise `dependents`' tsconfig-missing warning is a `Warning`-kind `Diagnostic` whose only machine-readable content is a message string containing the literal text `"tsconfig.json"` (`01-core-architecture.md:2332`). This is the "what to do next" agent-ergonomics concern being solved with ad hoc prose instead of a structured hint type.
+- **Truncation/diagnostic/output-format design decisions have had zero cross-referencing against a shared library anywhere in the "decision log" doc** — worth restating as the top-line finding: `05-research-and-decisions.md` extensively researches and either adopts or rejects prior art for ranking, resolution, parsing, and eval methodology (SCIP, stack-graphs, ast-grep, difftastic, CHA/RTA/k-CFA, embedding rerank, etc.) but at no point asks whether monokl's own output/truncation/error/diagnostic machinery (Sections 1, 3, 4, 5 above) should be delegated to the sibling `michi` crate instead of being independently designed and re-derived per command. Given the project's own `CLAUDE.md` states monokl is supposed to depend on michi for exactly this ("agent-facing output rendering... structured errors, hints... rather than reinventing it"), this is a real gap in the spec's own research discipline, not just an implementation-detail oversight.
+
+### Summary of highest-value dedupe candidates
+
+If a decision pass is warranted before more of this gets implemented, the four clearest candidates to replace with michi (in order of how much duplicated/inconsistent logic they'd eliminate) are:
+
+1. **`projection.rs`** (`03-multi-language-platform.md:1570-1749`) + **`output.rs`'s format/profile resolution** (`03-multi-language-platform.md:2839-2933`) — the field-projection, `--format minimal` pruning, and agent-vs-human presentation-resolution logic is the single largest chunk of hand-rolled "agent-ergonomic output primitive" code in the corpus.
+2. **Truncation markers** (`01-core-architecture.md:1274, 2330, 2332`) — three inconsistent hand-written formats for the same "capped, here's what's missing" concern.
+3. **Error rendering path** (`01-core-architecture.md:2436-2441` vs. `2445-2523`, cross-referenced at `07-edge-cases-and-failure-modes.md:54`) — the dead-vs-wired JSON-vs-miette conflict is a concrete bug that a single shared error-to-agent-output path would have made structurally impossible.
+4. **Diagnostic/hint message templating** (`query_support.rs`, `03-multi-language-platform.md:1751-1980`) — repeated hand-written `format!()` diagnostic strings that a shared structured-hint type would replace.</result>
+<usage><subagent_tokens>294099</subagent_tokens><tool_uses>19</tool_uses><duration_ms>336005</duration_ms></usage>
+</task-notification>
+
+---
+
+I agree, we should plan on using michi. That’s why we’re building it
+
+---
+
+Consider these deeply to see if the models from michi fit, if we have to enhance them or build on top?? Research, consider rust patterns like traits, etc
+
+Research and use the deepest thinking level. Probably opus with high effort to consider it semantically, architecturally and comprehensively
+
+---
+
+<task-notification>
+<task-id>a6b1c9b3148f263cf</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-monokl/57770ee1-28ed-468a-a817-1e154e82efc2/tasks/a6b1c9b3148f263cf.output</output-file>
+<status>completed</status>
+<summary>Agent "Deep architectural fit analysis: michi vs monokl" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result># michi ↔ monokl integration: architectural analysis
+
+**Verdict: adapter-at-the-boundary, `cli`-feature-gated, michi types confined to one new module. JSON stays canonical and michi-free. TOON becomes an additive locator format, never the carrier for `code`.** Everything below is empirically verified against real michi source (`/Users/gabe/Projects/michi`) — I built and ran probes rather than reasoning from the API surface.
+
+---
+
+## 0. Three practical blockers that outrank the type design
+
+These were not in the brief and change the sequencing answer.
+
+**License.** `/Users/gabe/Projects/michi/Cargo.toml` declares `license = "AGPL-3.0-or-later"`. `/Users/gabe/Projects/monokl/Cargo.toml` declares `license = "MIT"` — but `/Users/gabe/Projects/monokl/LICENSE` **is already the AGPL text**. So monokl's manifest is self-inconsistent today, independent of michi. Linking michi resolves toward AGPL, which matches monokl's actual LICENSE file. Fix: change monokl's `license` field to `"AGPL-3.0-or-later"`. Bookkeeping, not a blocker — but it must be deliberate.
+
+**MSRV.** michi declares `rust-version = "1.96"`; monokl declares `"1.85"`. Depending on michi silently makes monokl's declaration false. Local toolchain is `rustc 1.96.0`, so it builds here, but the manifest must be bumped (or michi lowered). michi is also `edition = "2021"` / `resolver = "2"` vs monokl's `edition = "2024"` / `resolver = "3"` — that mix is fine, editions are per-crate.
+
+**Registry.** michi is path-deps-only, unpublished. monokl already consumes `io-errors` from the private `orin-cargo` registry — so publishing michi to `orin-cargo` is the consistent choice. **But**: `crates/io-errors/` does not exist and there is no `.cargo/config.toml`, so `cargo metadata` currently fails at manifest parse (`registry index was not found in any configuration: orin-cargo`). SPEC-004 AC-008B locks this as expected. **Consequence: you cannot empirically verify a michi dependency until that is resolved** — which matters because this project's process requires empirical toolchain verification.
+
+---
+
+## 1. Error model fit
+
+### 1a. Variant-by-variant mapping
+
+Using SPEC-001's locked Display strings (including the two corrections: `Json` → `"json parsing or serialization failed"`, `StaleDiskCache` → `"disk cache is stale (version or config hash mismatch)"`).
+
+| MonoklError variant | `ErrorCode` | Fit | Notes |
+|---|---|---|---|
+| `Io(FileIoError)` | fan-out | **needs inspection** | `NotFound`/`PermissionDenied`/else → `NotFound`/`Forbidden`/`ExternalFailure`. One variant → 3 codes. |
+| `Walk{path, source: ignore::Error}` | fan-out | **needs inspection** | `ignore::Error::Glob` is user-fault → `InvalidInput`; `Io` → per-kind; else `ExternalFailure`. |
+| `RegexBuild(grep_regex::Error)` | `InvalidInput` | **clean** | |
+| `NonUtf8Path{path}` | `InvalidInput` | **forced** | Not caller input — a file found on disk. No good home. |
+| `TooManyTerms{count, limit}` | `InvalidInput` | **clean + gain** | Structured fields become a `RecoveryHint`. |
+| `TokenizerInit` | `ExternalFailure` | **forced** | Internal init failure. No `Internal`/`Bug` code exists. |
+| `Json(serde_json::Error)` | `ExternalFailure` | **forced** | Serializing monokl's *own* output — an internal bug. |
+| `PathOutsideRoot{path}` | `Forbidden` | **clean** | Genuinely a boundary refusal. |
+| `StaleDiskCache` | `Conflict` | **clean** | "Resource state mismatch" is exactly right. |
+| `InvalidGitRef{ref_, reason}` | fan-out | **needs inspection** | The three locked `reason` values are all `InvalidInput`; a missing ref would be `NotFound`. |
+| `Git{operation, message}` | `ExternalFailure` | **clean** | git *is* an external process. |
+| `SymlinkRejected{path}` | `Forbidden` | **clean** | Same family as `PathOutsideRoot`. |
+| `FileTooLarge{path, size, cap}` | `InvalidInput` | **forced** | HTTP 413 has no michi analogue. |
+| `LockPoisoned{context}` | `ExternalFailure` | **forced** | Internal invariant violation. |
+
+Tally: **6 clean, 3 fan-out, 5 forced.** Three semantically unrelated variants (`TokenizerInit`, `Json`, `LockPoisoned`) collapse onto `external_failure` — an agent reading only the code cannot distinguish "tokenizer failed to init" from "a lock was poisoned," which warrant different responses.
+
+### 1b. The retry hazard — the real finding, not the label collapse
+
+`ErrorCode::is_retryable_by_default()` returns `true` for `RateLimited | Unavailable | Timeout | ExternalFailure`, and `DomainError::new` **applies it automatically**. monokl is a local, synchronous, filesystem tool: essentially nothing it does is transiently retryable. Every one of the five variants routed to `ExternalFailure` would be born `retryable: true`, telling an agent to re-issue an identical call that will fail identically. **The adapter must call `.retryable(false)` unconditionally** — this is a correctness requirement, not hygiene.
+
+### 1c. Information loss — the `#[source]` chain is the real casualty
+
+`impl std::error::Error for DomainError {}` is empty, so `source()` returns `None`. The chain is not just flattened, it is *absent*. Worse: thiserror's `Display` does **not** include `#[source]`. So `DomainError::new(code, err.to_string())` on `MonoklError::Walk` emits only `"walker error at src/"` — the `ignore::Error` root cause vanishes silently. Same for `Io(FileIoError)` and its `io::Error`.
+
+Fix (verified working): walk `Error::source()`, use line 1 as `message`, and push each remaining line as a separate `Hint`. This preserves everything *and* solves a second problem — see below.
+
+### 1d. Two live injection bugs, one in each codebase
+
+`DomainError::render()` writes `message` raw into a `key: value` block, and `michi_core::hints::append_hints` writes hints raw into `help[N]:` (unlike the TOON path, which sanitizes via `sanitize_hint`). Verified:
+
+```
+error: external_failure
+message: git_failed: git rev-parse failed: fatal: ambiguous argument 'nope'
+Use '--' to separate paths          ← un-keyed orphan line; breaks KV parsing
+exit_code: 1
+```
+
+`MonoklError::Git{message}` carries git stderr, which is routinely multi-line. Unix paths may also contain `\n`. **The adapter owns line-discipline normalization.** The first-line-plus-hints split handles it correctly (verified output in §4).
+
+Separately, monokl's own `output.rs::render_error` interpolates `{err}` raw into a JSON string literal — and `NonUtf8Path` / `InvalidGitRef` format with `{:?}`, emitting embedded quotes. That produces syntactically invalid JSON. Dead today, latent if ever wired.
+
+### 1e. Two things michi genuinely *adds* that I did not expect
+
+**miette gets stronger, not weaker.** SPEC-001 AC-002B locks `&lt;MonoklError as miette::Diagnostic&gt;::code()`, `::help()`, and `::url()` as returning `None` for all 14 variants — the derive exists "solely so downstream code compiles against the trait bound." michi's `impl miette::Diagnostic for DomainError` supplies `code()` (the label) and `help()` (joined hints). Routing the miette path through `DomainError` is a strict **upgrade** over monokl's deliberately inert surface.
+
+**`RecoveryHint` restores information SPEC-001 deleted.** The `StaleDiskCache` correction stripped `"run \`mnkl init --rebuild\`"` from the Display string. That advice now has no home — except `RecoveryHint::new("init").param("rebuild", KvValue::Bool(true))`, which is exactly what it's for.
+
+### 1f. Design: named trait, no `From`, monokl code carried in the message
+
+Do **not** replace `MonoklError`. AGENTS.md line 18 is binding: *"One thiserror error enum per crate… don't add a String-message variant when a structured one is possible."* `DomainError` is precisely a String-message type — it is a *rendering target*, not a domain type.
+
+I verified `impl From&lt;MonoklError&gt; for DomainError` **does** pass the orphan rule (local type in the trait's parameter position). But I recommend **against** providing it: `From` makes the conversion reachable by `?` anywhere in the crate, which defeats boundary containment. A named trait is greppable and cannot be triggered implicitly. It also accepts context (`command`) that `From` structurally cannot — and `RecoveryHint.tool` needs it.
+
+To recover the collapsed distinctions, carry a monokl-specific code as a **message prefix** (`monokl_code()`). It survives every michi render path — `render()`, `render_json()`, `render_github_annotation()`, `Display` — with no michi change and no extra field. Verified: `"message":"too_many_terms: too many query terms: 41 (limit 32)"`.
+
+---
+
+## 2. Output model fit — TOON is disqualified for `search`
+
+### 2a. `escape_value` does not escape newlines. It deletes them.
+
+`/Users/gabe/Projects/michi/crates/michi-toon/src/escape.rs:17,33` — `'\n' | '\r' =&gt; {}`. Not `\\n`. Dropped. Verified end-to-end:
+
+Input:
+```ts
+// authenticate the user
+export async function login(u: string, p: string) {
+```
+TOON cell:
+```
+"// authenticate the userexport async function login(u: string, p: string) {  const t = await api.post('/login', { u, p });  return t.token;}"
+```
+
+**The entire function is now inside a `//` line comment.** This is not a readability complaint — it is semantic corruption of the exact payload monokl exists to deliver. There is **no configuration that avoids it**: `truncate_cells_at(usize::MAX)` still strips. And the KV path is identical — `kv/mod.rs:37` strips `\n`/`\r` too. **No michi text-render path can carry a multi-line string intact.**
+
+### 2b. `toon::list()` silently drops fields — on exactly monokl's gated types
+
+Field names come from the **first** item's serialized keys. With `skip_serializing_if`, a `None` in row 1 erases the column for every row. Verified:
+
+```
+=== row1 has None (key skipped), row2 has Some ===
+blocks[2]{file,lineStart,matchedKeywords}:
+  a.ts,1,"[\"x\"]"
+  b.ts,2,[]                    ← symbolSignature "fn b()" SILENTLY GONE
+
+=== reverse order ===
+blocks[2]{file,lineStart,symbolSignature,matchedKeywords}:
+  b.ts,2,fn b(),[]             ← same data, different schema
+```
+
+This lands on the gated types directly: SPEC-006 AC-002 puts `skip_serializing_if = "Vec::is_empty"` on `CodeBlock.matched_lines`/`matched_keywords`; SPEC-003 puts `skip_serializing_if = "Option::is_none"` on `SymbolEntry.owner`/`trait_impl`/`visibility`/`kind_detail`. It violates two PRINCIPLES.md tenets at once: *"a truncation marker, not silent data loss"* and *"the same query against the same code should produce byte-identical JSON"* — here the output **schema** depends on result ordering, which depends on BM25 scores.
+
+Also: `toon::list()` column order depends on `serde_json`'s `preserve_order` feature being unified on (verified — monokl enables it; without it keys sort alphabetically). An implicit cross-crate feature dependency for a load-bearing determinism guarantee. **Do not use `toon::list()`. Use an explicit field list.**
+
+### 2c. Three more michi behaviors the adapter must defend against
+
+- `render_toon` **`debug_assert!`s** on row/header arity mismatch (`render.rs:142`) — verified panic. monokl's clippy config denies `panic`; this one comes from inside a dependency and would abort test builds.
+- `AgentResponse::toon_body()` swallows `validate()` failure into the **body**: `"error: toon_validation_failed\nmessage: …"`, exit code still 0. Data silently replaced by an error string.
+- Default `max_cell_len` is 200 and truncates with a **hardcoded** hint `full=true` — a flag monokl doesn't have. And the number is the *original* char count, not the omitted count.
+
+### 2d. `OutputFormat::Json` is not JSON output
+
+`AgentResponse::render(OutputFormat::Json)` produces `{"body":"&lt;the TOON text as a string&gt;","hints":[],"recovery":[],"isError":false}`. It is a JSON *envelope around TOON text*, not a structured serialization. **michi cannot carry monokl's `--format json` contract.** That contract is already gated (SPEC-006/007) with exact top-level key-set snapshots, and doc 03 §5 already states the governing rule: *"JSON remains the canonical agent contract."*
+
+### 2e. Verdict, per output type
+
+- **`search` / `RankedBlock`: TOON is disqualified** as a carrier for `code`. But it is excellent as a **locator table** — `file,lineStart,lineEnd,nodeKind,symbolSignature,rank,finalScore` plus a hint pointing at monokl's existing `extract --file --line-start --line-end`. That is textbook progressive disclosure, it is dramatically cheaper in tokens, and it turns michi's constraint into the right design rather than a workaround.
+- **`symbols` / `SymbolEntry`: TOON fits well** — all scalars, and `escape_value` correctly quotes signatures containing commas (`HashMap&lt;K, V&gt;`, parameter lists). One transform needed: `SymbolsResult.files` is a `BTreeMap&lt;Utf8PathBuf, Vec&lt;SymbolEntry&gt;&gt;`, so the projection must flatten to one row per (file, symbol) with `file` as a leading column. **This is why the trait belongs on the response, not the row** — flattening is a container-level operation, so a per-item `ToToonRow` is the wrong abstraction.
+- `truncation_marker` decomposes naturally: the *number* becomes michi's `totalCount` (row count vs. total tells the agent what's missing with no marker string at all), the *advice* becomes a `Hint`.
+- Minor: `Value::Null` and `Value::Str("")` both render as an empty cell — `Some("")` and `None` are indistinguishable on the TOON wire.
+
+---
+
+## 3. Truncation fit
+
+Genuinely different problems. michi-truncate: **char**-count, **single string**, marker `" ({n} chars truncated — use {hint})"` where *n* is the **original** length. monokl's budget.rs: **BPE token** count (`o200k_base`), over a **list**, with three interacting caps (`max_results` / `max_bytes` on `code` only / `max_tokens`), break-not-continue semantics, and a marker `"[+{omitted} more results omitted; refine with +term or -term]"` where the number is the **omitted** count.
+
+**What can genuinely be reused:**
+1. `truncate_inline()` as a **per-field safety net** — a single oversized `Diagnostic.message`, a pathological `symbol_signature`. Char-based is fine for a 200-char cap. This is real, direct reuse.
+2. If monokl wants a hint other than `full=true` on the TOON path, it must pre-truncate with `truncate_inline(s, n, "detail=full")` and set `truncate_cells_at(usize::MAX)`. Also real reuse.
+
+**What cannot:** anything in budget.rs. Token counting, list-level capping, the 2 MB ceiling, the omitted count — none of it exists in michi, and char count is not a proxy for BPE tokens on code.
+
+**The `Truncated` struct shape:** worth noting that monokl **already independently arrived at it**. `Truncated { content, original_len, was_truncated, signal }` ≅ `SearchResponse { results, total_blocks_before_truncation, truncated, truncation_marker }`. The alignment is confirmatory, not actionable — no change needed.
+
+**Marker wording:** do **not** retrofit michi's convention onto the JSON markers. They're gated and snapshot-tested; the gain is cosmetic. If a TOON surface is added, use michi's convention *there*, so each surface is internally consistent. One divergence to keep apart: michi's number is the original total, monokl's is the omitted count — if they ever co-occur in one payload an agent could misread them.
+
+---
+
+## 4. Recommended architecture (compiled and run)
+
+michi enters through **one module**: `crates/monokl/src/output/agent.rs`, gated by `cli`. The gated lib.rs already has `#[cfg(feature = "cli")] pub mod output;`, so this needs **no lib.rs change** — `output.rs` becomes `output/mod.rs` + `output/agent.rs`, and `output.rs` is not itself a gated track (Track 21 is "Not started"). Manifest:
+
+```toml
+michi = { version = "0.1", registry = "orin-cargo", optional = true, features = ["miette"] }
+cli   = ["dep:clap", "dep:michi", "miette"]
+```
+
+The library core (`budget`, `query`, `rank`, `types`, `error`, …) stays michi-free by construction.
+
+### The TOON projection trait — arity in the type
+
+```rust
+/// `N` is the column count. Encoding it in the type makes a row/header arity
+/// mismatch a *compile* error rather than michi-toon's `debug_assert!` panic
+/// (michi-toon/src/render.rs:142).
+pub trait ToonProjection&lt;const N: usize&gt; {
+    const TYPE_NAME: &amp;'static str;
+    const FIELDS: [&amp;'static str; N];
+    fn toon_rows(&amp;self) -&gt; Vec&lt;[Value; N]&gt;;
+    fn toon_total_count(&amp;self) -&gt; Option&lt;usize&gt; { None }
+    fn toon_hints(&amp;self) -&gt; Vec&lt;Hint&gt; { Vec::new() }
+}
+
+pub fn to_agent_response&lt;const N: usize, P: ToonProjection&lt;N&gt;&gt;(p: &amp;P) -&gt; AgentResponse {
+    let fields: Vec&lt;&amp;str&gt; = P::FIELDS.to_vec();
+    let rows: Vec&lt;Vec&lt;Value&gt;&gt; = p.toon_rows().into_iter().map(|r| r.to_vec()).collect();
+    let mut r = AgentResponse::new(P::TYPE_NAME)
+        .items(rows, &amp;fields)
+        .truncate_cells_at(usize::MAX);   // monokl owns truncation; michi must not silently cut
+    if let Some(n) = p.toon_total_count() { r = r.total_count(n); }
+    r.hints(p.toon_hints())
+}
+
+/// The ONLY sanctioned way to build a string cell. michi-toon's `escape_value`
+/// DELETES `\n`/`\r` (escape.rs:17,33), concatenating code lines so a `//`
+/// comment swallows the next line. Pre-escape to a literal two-char sequence.
+pub fn cell(s: &amp;str) -&gt; Value {
+    if s.contains('\n') || s.contains('\r') {
+        Value::from(s.replace('\r', "").replace('\n', "\\n"))
+    } else { Value::from(s) }
+}
+pub fn opt_cell(s: Option&lt;&amp;str&gt;) -&gt; Value { s.map_or(Value::Null, cell) }
+```
+
+`const N` as a *trait* parameter (not an associated const) is what makes this work on stable — `[&amp;'static str; N]` and `[Value; N]` are legal there, and `N` is inferred at every call site. Verified compiling. Cost: no `dyn ToonProjection`.
+
+Container-level impl (verified output below):
+
+```rust
+impl ToonProjection&lt;8&gt; for SymbolsResult {
+    const TYPE_NAME: &amp;'static str = "symbols";
+    const FIELDS: [&amp;'static str; 8] =
+        ["file","name","kind","line","signature","owner","traitImpl","visibility"];
+    fn toon_rows(&amp;self) -&gt; Vec&lt;[Value; 8]&gt; {
+        self.files.iter().flat_map(|(f, es)| es.iter().map(move |e| [
+            cell(f.as_str()), cell(&amp;e.name), cell(e.kind.as_str()), Value::from(e.line),
+            opt_cell(e.signature.as_deref()), opt_cell(e.owner.as_deref()),
+            opt_cell(e.trait_impl.as_deref()), opt_cell(e.visibility.map(|v| v.as_str())),
+        ])).collect()
+    }
+    fn toon_total_count(&amp;self) -&gt; Option&lt;usize&gt; { Some(self.total_symbol_count) }
+    fn toon_hints(&amp;self) -&gt; Vec&lt;Hint&gt; { /* Diagnostics + truncation_marker → Hints */ }
+}
+```
+
+Verified output:
+```
+symbols[2]{file,name,kind,line,signature,owner,traitImpl,visibility}:
+  src/auth.ts,login,function,12,"function login(u: string, p: string): Promise&lt;Token&gt;",,,
+  src/lib.rs,new,method,40,"fn new(a: A, b: B) -&gt; Self",Cache,Default,public
+totalCount: 137
+help[2]:
+  skipped: vendor/x.py: unsupported language
+  [symbol cap 500 reached; pass fewer files or increase limit]
+```
+
+### The error adapter
+
+```rust
+#[derive(Debug, Clone, Copy)]
+pub struct ErrorContext&lt;'a&gt; { pub command: &amp;'a str }   // RecoveryHint.tool needs this
+
+pub trait ToDomainError {
+    /// Stable monokl discriminator, finer-grained than michi's 9 codes.
+    /// Emitted as the message prefix so it survives every michi render path.
+    fn monokl_code(&amp;self) -&gt; &amp;'static str;
+    fn error_code(&amp;self) -&gt; ErrorCode;
+    fn to_domain_error(&amp;self, ctx: ErrorContext&lt;'_&gt;) -&gt; DomainError;
+}
+
+/// thiserror's Display omits `#[source]`, and DomainError has no `source()`.
+/// Flatten the chain, splitting on newlines: michi writes `message` and hints
+/// RAW into line-oriented blocks (error.rs:177, hints.rs:58).
+fn chain_lines(e: &amp;dyn std::error::Error) -&gt; Vec&lt;String&gt; { /* … */ }
+
+impl ToDomainError for MonoklError {
+    fn to_domain_error(&amp;self, ctx: ErrorContext&lt;'_&gt;) -&gt; DomainError {
+        let mut lines = chain_lines(self);
+        let head = if lines.is_empty() { String::new() } else { lines.remove(0) };
+        let mut d = DomainError::new(self.error_code(),
+                        format!("{}: {head}", self.monokl_code()))
+            .retryable(false);                    // nothing monokl does is transient
+        for l in lines { d = d.hint(l); }         // chain tail → help[] entries
+        // per-variant enrichment, e.g.:
+        if let Self::TooManyTerms { count, limit } = self {
+            d = d.hint(format!("you supplied {count} terms; the limit is {limit}"))
+                 .recovery(RecoveryHint::new(ctx.command)
+                     .param("maxTerms", KvValue::Int(*limit as i64))
+                     .reason("re-run with a shorter query"));
+        }
+        d
+    }
+}
+// Deliberately NO `impl From&lt;MonoklError&gt; for DomainError` — it passes the
+// orphan rule (verified), but would make the conversion reachable via `?`
+// anywhere in the crate, defeating boundary containment.
+```
+
+Verified: `Io` + `PermissionDenied` → `error: forbidden` / `message: io: io failure` / `help[1]: os error 13` — the root cause reaches the agent. Multi-line git stderr → first line in `message`, remainder as a help entry; **both blocks stay well-formed**.
+
+### Impact on gated specs
+
+| Track | Change required |
+|---|---|
+| SPEC-001 `MonoklError` | **None.** The impl is external to the enum. |
+| SPEC-003/005/006/007/008/009 | **None.** Local trait, local types — impls live in `output/agent.rs`. |
+| SPEC-004 Cargo.toml | **Amendment required**: optional `michi` dep, `cli` feature edit, `rust-version` 1.85→1.96, `license` MIT→AGPL-3.0-or-later. |
+| SPEC-004 lib.rs | **None.** `output` becomes a directory module. |
+
+**One gated spec must be re-opened, and it's the cheapest one** — a manifest, not a type contract. Everything else layers on cleanly. That is the strongest practical argument for this pattern.
+
+---
+
+## 5. What monokl must build that michi doesn't provide
+
+1. **The entire token budget layer.** o200k_base counting, list-level capping, three interacting caps, 2 MB ceiling, omitted-count marker. michi contributes nothing.
+2. **The projection layer itself** — `ToonProjection` impls, `BTreeMap` flattening, the locator-vs-payload split for `search`.
+3. **Newline normalization** for cells, error messages, and hints. michi actively destroys newlines on three paths and injects them un-escaped on two others.
+4. **Error-chain flattening.** `DomainError` has no `source()`.
+5. **A monokl error-code vocabulary.** 9 michi codes vs. 14 variants; five collapse.
+6. **All hint and recovery *content*.** michi provides `Hint`/`RecoveryHint` as carriers and zero text. Per-variant hint generation is entirely monokl's.
+7. **Pre-validation before every `AgentResponse` render** — because `toon_body()` swallows `validate()` errors into the body with exit code 0.
+8. **A test-only TOON parser**, if a TOON surface ships — needed for round-trip property tests, not at runtime (monokl reads code, not TOON). michi has one to copy at `docs/projects/01-mvp.md:784`.
+9. **The LSP/analyzer circuit breaker.** michi-resilience has no executor, no breaker, no async; `parse_retry_after`/`is_retryable_status` are HTTP concepts irrelevant to a local subprocess. Realistic reuse: **`next_retry_delay()`, one function.** States, counters, and the executor are monokl's.
+10. **`--format toon` / `OutputProfile::Agent` plumbing**, including its interaction with `projection.rs`.
+
+---
+
+## 6. Sequencing
+
+**Start with brainstorming, not canon.** ACTIVE.md's Pipeline Protocol constraint and CLAUDE.md both require `superpowers:brainstorming` for design decisions not covered by `docs/spec/05-research-and-decisions.md`. michi/TOON appears **nowhere** in the spec corpus — its only mentions are CLAUDE.md:7 (a forward-looking note) and an unrelated crate allowlist. Notably, ACTIVE.md records a canon-exit-gate failure on a **fabricated "TOON" citation** during SPEC-003, precisely because the term has no grounding in the corpus. So the new track's `linked_research` must cite **michi's real source files with line numbers**, not monokl documents.
+
+Recommended order:
+
+**P0 — infra, before any spec.** Settle license, MSRV, and how michi is consumed. Unblocking `orin-cargo` + `io-errors` is a prerequisite for *any* empirical verification from here on (`cargo metadata` fails today) — it already blocks every track after SPEC-004, so this isn't new debt introduced by michi.
+
+**P1 — amend SPEC-004** with the manifest changes. Small, mechanical, but it re-opens a gated spec, so do it deliberately.
+
+**P2 — brainstorming pass** on the three open design questions in §7.
+
+**P3 — draft SPEC-010** (next free ID; 002 is reserved), *"michi output/error boundary."* Scope: `output/agent.rs` — `ToonProjection`, `cell`/`opt_cell`, `ToDomainError`, the 14-variant code map, chain flattening, line-discipline normalization, pre-validation. Its natural error cases are unusually rich and suit corner-case-first drafting: arity, newline corruption, `validate()` swallowing, retry-flag correctness, code-map exhaustiveness, `Null`-vs-empty-string ambiguity.
+
+**Position: immediately before Track 21 (CLI / pipeline / main.rs, §20-22).** Track 21 consumes the boundary's public surface for `--format` dispatch, so the boundary must be gated first. All its inputs (SPEC-001, 003, 005, 006, 007, 008) are already gated.
+
+**Keep Track 11 (Budget, §10) independent.** Different problem, no michi dependency, no ordering constraint either way.
+
+**Bonus:** SPEC-001 explicitly non-goals the `render_error`-vs-miette conflict as "a known, separately-tracked gap." SPEC-010 is its natural home — `render_error` becomes `DomainError::render_json()`, which is well-tested and correctly escapes via `json_escape_str`, fixing both doc-07 finding #19 and the latent raw-`{err}`-into-JSON injection bug in one move.
+
+---
+
+## 7. Open questions I could not resolve from evidence
+
+1. **`--only`/`--fields` vs. `const FIELDS: [_; N]`.** Projection is runtime-dynamic; the const-generic trait is static. Either declare `--format toon` incompatible with `--only` (clap conflict — simple, honest, recommended for v1), or add a dynamic escape hatch that re-introduces arity risk. If you go dynamic, call `ToonOptions::validate()` yourself first — michi's swallow-into-body behavior is unacceptable for monokl.
+
+2. **Does `search --format toon` omit `code` entirely, or emit it `\n`-escaped?** Locators-plus-`extract` is cleaner and cheaper; `\n`-escaped is more self-contained but produces one enormous line. Possibly `--detail` decides. This is genuinely a product call, not a technical one.
+
+3. **Should michi-truncate become an *unconditional* dep for defensive field caps in `budget.rs`?** It's ~90 lines with zero dependencies, and the AGPL obligation attaches either way. But it breaks "the library core is michi-free." My recommendation is to keep michi fully `cli`-gated for v1 and revisit as a separate one-line decision — but I don't think the evidence makes either answer clearly wrong.</result>
+<usage><subagent_tokens>157081</subagent_tokens><tool_uses>32</tool_uses><duration_ms>761931</duration_ms></usage>
+</task-notification>
+
+---
+
+We should be agpl 3 for sure. For the error model how do we want to consider things? should michi domain error be more flexible? Is supposed to be a reusable library. But maybe Monikl has a very custom error model. Thing through it
+
+---
+
+If there are things we need to adjust in michi to simplify mapping even if not fully reusing we should look into it. I can prompt the michi agent.
