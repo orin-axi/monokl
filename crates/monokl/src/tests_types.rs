@@ -225,3 +225,17 @@ fn visibility_variant_count_and_order_pinned() {
     assert_eq!(Visibility::Private as usize, 3);
 }
 
+#[test]
+fn field_types_and_derives_pinned() {
+    fn assert_enum_derives<T: std::fmt::Debug + Clone + Copy + PartialEq + Eq>() {}
+    fn assert_entry_derives<T: std::fmt::Debug + Clone>() {}
+    assert_enum_derives::<SymbolKind>();
+    assert_enum_derives::<Visibility>();
+    assert_entry_derives::<SymbolEntry>();
+
+    let json = r#"{"name":"foo","kind":"function","line":7}"#;
+    let e: SymbolEntry = serde_json::from_str(json).unwrap();
+    let line: usize = e.line;
+    assert_eq!(line, 7);
+}
+
