@@ -41,3 +41,18 @@ miette = ["dep:miette", "io-errors/miette"]
 
 [dependencies]
 io-errors = { path = "../io-errors", version = "0.1", registry = "orin-cargo", default-features = false }
+
+blake3        = { workspace = true }
+camino        = { workspace = true }
+dashmap       = { workspace = true }
+grep-regex    = { workspace = true }
+grep-searcher = { workspace = true }
+ignore        = { workspace = true }
+rayon         = { workspace = true }
+regex         = { workspace = true }
+rustc-hash    = { workspace = true }
+serde         = { workspace = true }
+serde_json    = { workspace = true }
+thiserror     = { workspace = true }
+tiktoken-rs   = { workspace = true }
+tracing       = { workspace = true }
