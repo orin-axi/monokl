@@ -19,3 +19,15 @@ path       = "src/lib.rs"
 name              = "monokl"
 path              = "src/main.rs"
 required-features = ["cli"]
+
+[features]
+default = ["lang-ts", "cli"]
+
+# TypeScript/JavaScript analysis via OXC parser + AST + resolver.
+lang-ts = [
+    "dep:oxc_parser",
+    "dep:oxc_ast",
+    "dep:oxc_span",
+    "dep:oxc_allocator",
+    "dep:oxc_resolver",
+]
