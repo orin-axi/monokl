@@ -32,3 +32,8 @@ missing_panics_doc = "allow"
 
 [workspace.lints.rust]
 unsafe_code = "deny"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
