@@ -103,4 +103,28 @@ pub enum MonoklError {
     /// text: "on-disk cache is stale (version or config_hash mismatch); starting fresh".
     #[error("disk cache is stale (version or config hash mismatch)")]
     StaleDiskCache,
+
+    /// AC-012: sole construction site `git_scope::validate_git_ref`.
+    /// Exactly three `reason` literals are constructed anywhere in the spec
+    /// corpus: "ref is empty" (empty input), "starts with '-' — refusing
+    /// as it could be parsed as a git option" (git-option-injection guard),
+    /// and "contains characters outside the safe set" (any char outside
+    /// A-Za-z0-9_/.@{}^~:+-).
+    #[error("invalid git ref {ref_:?}: {reason}")]
+    InvalidGitRef { ref_: String, reason: &'static str },
+
+    /// AC-015: exactly 2 of `git_scope.rs`'s construction sites spell out a
+    /// literal `operation` value in the spec corpus --
+    /// `effective_pr_range`'s merge_base call (`operation: "merge-base"`)
+    /// and `blob_at_ref` (`operation: "show"`). `collect_changes` contains
+    /// 3 additional fallible-git-operation sites whose `map_err` closures
+    /// are elided in the source as shown; their operation literals (and,
+    /// for 2 of the 3, even whether the constructed variant is `Git` at
+    /// all) are undetermined by the spec corpus and are not invented here
+    /// (non_goals).
+    #[error("git {operation} failed: {message}")]
+    Git {
+        operation: &'static str,
+        message: String,
+    },
 }
