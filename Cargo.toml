@@ -5,8 +5,8 @@ members = ["crates/*"]
 [workspace.package]
 version = "0.0.0"
 edition = "2024"
-rust-version = "1.85"
-license = "MIT"
+rust-version = "1.96"
+license = "AGPL-3.0-or-later"
 repository = "https://github.com/orin-axi/monokl"
 authors = ["Orin-Axi Contributors"]
 keywords = ["orin-axi", "developer-tools"]
