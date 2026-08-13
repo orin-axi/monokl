@@ -183,3 +183,158 @@ pub enum MonoklError {
 /// -- not via `persist::flush`'s fallback, where the identical variant
 /// propagates uncaught (AC-013B).
 pub type Result<T> = std::result::Result<T, MonoklError>;
+
+#[cfg(test)]
+mod tests {
+    //! Real `assert_eq!` tests for every Display literal this module locks, for the 13
+    //! variants that do not depend on the io-errors blocker (see T-009). This module is
+    //! valid, correct Rust and ships with error.rs -- but it cannot be run via `cargo test`
+    //! against the real monokl crate yet, because the crate as a whole cannot build (see
+    //! this plan's `baseline_build_status` note: 14 of lib.rs's 15 declared modules, and
+    //! Cargo.toml's `[[bin]]` target, have no file on disk, and
+    //! crates/monokl/Cargo.toml's `registry = "orin-cargo"` dependency line fails cargo's
+    //! manifest parse before dependency resolution even begins). T-010 (this task, in
+    //! PLAN-001) proves every one of these exact assertions for real, using an isolated
+    //! /tmp fixture crate that reproduces this enum without the io-errors/registry
+    //! dependency at all -- the same isolation pattern SPEC-004/PLAN-004 already
+    //! established for this exact class of blocker, and the real command output this
+    //! plan's own steps quote was captured live against cargo 1.96.0, not guessed. Once
+    //! the crate builds for real (io-errors blocker resolved), this module runs as-is
+    //! inside the real crate with no changes needed. The Io variant has no test here and
+    //! is not expected to: it does not exist in this enum yet (T-009).
+    use super::*;
+
+    fn real_ignore_error() -> ignore::Error {
+        ignore::overrides::OverrideBuilder::new(".")
+            .add("[")
+            .unwrap_err()
+    }
+
+    fn real_grep_regex_error() -> grep_regex::Error {
+        grep_regex::RegexMatcherBuilder::new().build("(").unwrap_err()
+    }
+
+    fn real_serde_json_error() -> serde_json::Error {
+        serde_json::from_str::<serde_json::Value>("{not valid json").unwrap_err()
+    }
+
+    #[test]
+    fn walk_display() {
+        let err = MonoklError::Walk { path: Utf8PathBuf::from("/x"), source: real_ignore_error() };
+        assert_eq!(err.to_string(), "walker error at /x");
+    }
+
+    #[test]
+    fn regex_build_display() {
+        let err: MonoklError = real_grep_regex_error().into();
+        assert_eq!(err.to_string(), "regex compilation failed");
+    }
+
+    #[test]
+    fn non_utf8_path_display() {
+        let err = MonoklError::NonUtf8Path { path: std::path::PathBuf::from("/bad") };
+        assert_eq!(err.to_string(), "non-UTF-8 path encountered: \"/bad\"");
+    }
+
+    #[test]
+    fn too_many_terms_display() {
+        let err = MonoklError::TooManyTerms { count: 12, limit: 8 };
+        assert_eq!(err.to_string(), "query has too many terms: 12 > 8");
+    }
+
+    #[test]
+    fn tokenizer_init_display() {
+        let err = MonoklError::TokenizerInit;
+        assert_eq!(err.to_string(), "tokenizer init failed");
+    }
+
+    #[test]
+    fn json_display() {
+        let err: MonoklError = real_serde_json_error().into();
+        assert_eq!(err.to_string(), "json parsing or serialization failed");
+    }
+
+    #[test]
+    fn path_outside_root_display() {
+        let err = MonoklError::PathOutsideRoot { path: Utf8PathBuf::from("/root/outside") };
+        assert_eq!(err.to_string(), "path outside workspace root: /root/outside");
+    }
+
+    #[test]
+    fn stale_disk_cache_display() {
+        let err = MonoklError::StaleDiskCache;
+        assert_eq!(err.to_string(), "disk cache is stale (version or config hash mismatch)");
+    }
+
+    #[test]
+    fn invalid_git_ref_display() {
+        let err = MonoklError::InvalidGitRef { ref_: "-x".to_string(), reason: "starts with '-' — refusing as it could be parsed as a git option" };
+        assert_eq!(err.to_string(), "invalid git ref \"-x\": starts with '-' — refusing as it could be parsed as a git option");
+    }
+
+    #[test]
+    fn git_display() {
+        let err = MonoklError::Git { operation: "show", message: "not found".to_string() };
+        assert_eq!(err.to_string(), "git show failed: not found");
+    }
+
+    #[test]
+    fn symlink_rejected_display() {
+        let err = MonoklError::SymlinkRejected { path: Utf8PathBuf::from("/l") };
+        assert_eq!(err.to_string(), "refusing to read symlink: /l");
+    }
+
+    #[test]
+    fn file_too_large_display() {
+        let err = MonoklError::FileTooLarge { path: Utf8PathBuf::from("/big"), size: 100, cap: 50 };
+        assert_eq!(err.to_string(), "file too large: /big is 100 bytes, cap is 50");
+    }
+
+    #[test]
+    fn lock_poisoned_display() {
+        let err = MonoklError::LockPoisoned { context: "ctx" };
+        assert_eq!(err.to_string(), "internal lock poisoned in ctx — a prior panic left shared state possibly inconsistent; this is a bug, please report");
+    }
+
+    /// AC-002B (non-Io half): for all 13 non-Io variants, <MonoklError as
+    /// miette::Diagnostic>::code()/help()/url() all return None. The Io
+    /// variant's own code()/help()/url() cannot be tested here or anywhere in
+    /// this workspace today -- it does not exist in the enum yet (T-009) --
+    /// and remains in this plan's deferred_criteria field, narrowed to just
+    /// that half. This test is gated on the "miette" feature (unlike the
+    /// other 13 Display-literal tests above, which need no feature) because
+    /// it calls the miette::Diagnostic trait methods, and the enum's own
+    /// `#[derive(miette::Diagnostic)]` is itself feature-gated via
+    /// `#[cfg_attr(feature = "miette", ...)]` above -- crates/monokl/Cargo.toml
+    /// enables "miette" by default (cli = ["dep:clap", "miette"], and "cli"
+    /// is in the default feature set), so this test runs under a default
+    /// `cargo test` once the crate builds; it is proven for real today via
+    /// T-010's isolated /tmp fixture (steps 5-7), which is unaffected by the
+    /// io-errors/registry blocker that keeps the real crate from building.
+    #[cfg(feature = "miette")]
+    #[test]
+    fn all_non_io_variants_have_no_diagnostic_metadata() {
+        use miette::Diagnostic;
+        let variants: Vec<MonoklError> = vec![
+            MonoklError::Walk { path: Utf8PathBuf::from("/x"), source: real_ignore_error() },
+            real_grep_regex_error().into(),
+            MonoklError::NonUtf8Path { path: std::path::PathBuf::from("/bad") },
+            MonoklError::TooManyTerms { count: 12, limit: 8 },
+            MonoklError::TokenizerInit,
+            real_serde_json_error().into(),
+            MonoklError::PathOutsideRoot { path: Utf8PathBuf::from("/root/outside") },
+            MonoklError::StaleDiskCache,
+            MonoklError::InvalidGitRef { ref_: "-x".to_string(), reason: "starts with '-' — refusing as it could be parsed as a git option" },
+            MonoklError::Git { operation: "show", message: "not found".to_string() },
+            MonoklError::SymlinkRejected { path: Utf8PathBuf::from("/l") },
+            MonoklError::FileTooLarge { path: Utf8PathBuf::from("/big"), size: 100, cap: 50 },
+            MonoklError::LockPoisoned { context: "ctx" },
+        ];
+        assert_eq!(variants.len(), 13);
+        for v in &variants {
+            assert!(v.code().is_none());
+            assert!(v.help().is_none());
+            assert!(v.url().is_none());
+        }
+    }
+}
