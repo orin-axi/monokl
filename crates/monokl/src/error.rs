@@ -60,4 +60,20 @@ pub enum MonoklError {
     /// `tiktoken_rs::o200k_base().map_err(|_| MonoklError::TokenizerInit)?`.
     #[error("tokenizer init failed")]
     TokenizerInit,
+
+    /// AC-011: 8 raw, non-test call sites in 3 categories -- cache-deserialize
+    /// (1 site, `persist::load_cache`), cache-serialize (3 sites, all in
+    /// `persist.rs`), CLI/output-serialize (4 sites: `output::render_json`,
+    /// `output::render_json_compact`, `projection::project_inspect_result`,
+    /// `projection::project_search_response`). Display text corrected from
+    /// "json serialization failed" to the text below, since the
+    /// cache-deserialize site is a parse failure the old text
+    /// mischaracterized as a serialization failure.
+    #[error("json parsing or serialization failed")]
+    Json(#[from] serde_json::Error),
+
+    /// AC-010: fired by the `dependents` command when the canonicalized
+    /// target file does not start with the canonicalized root argument.
+    #[error("path outside workspace root: {path}")]
+    PathOutsideRoot { path: Utf8PathBuf },
 }
