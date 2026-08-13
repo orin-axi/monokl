@@ -127,4 +127,30 @@ pub enum MonoklError {
         operation: &'static str,
         message: String,
     },
+
+    /// AC-016: sole construction site `io_safety::read_to_string_capped`,
+    /// fired when `symlink_metadata(path).file_type().is_symlink()` is
+    /// true, checked before the size check (see `FileTooLarge`).
+    /// `read_to_string_capped` has no call site anywhere in the spec
+    /// corpus despite prose claiming it guards
+    /// search/inspect/extract/refs/definition -- refuted by
+    /// `07-edge-cases-and-failure-modes.md` Part 3 findings #2 and #16,
+    /// which show `extract` and the refs/definition path use raw
+    /// `fs::read_to_string` instead. This variant is therefore currently
+    /// unconstructible via any shown command path; wiring
+    /// `read_to_string_capped` in is `io_safety.rs` implementation work,
+    /// out of scope here (non_goals).
+    #[error("refusing to read symlink: {path}")]
+    SymlinkRejected { path: Utf8PathBuf },
+
+    /// AC-017: same sole construction site as `SymlinkRejected`, fired when
+    /// `meta.len() > MAX_INSPECTABLE_FILE_SIZE` (50 * 1024 * 1024 =
+    /// 52,428,800 bytes). Shares `SymlinkRejected`'s total unreachability
+    /// in the current corpus.
+    #[error("file too large: {path} is {size} bytes, cap is {cap}")]
+    FileTooLarge {
+        path: Utf8PathBuf,
+        size: u64,
+        cap: u64,
+    },
 }
