@@ -144,6 +144,37 @@
         "label": "Skill: superpowers:dispatching-parallel-agents",
         "default_collapsed": true
       }
+    },
+    {
+      "id": "claude-skill-toolu_015Uv89vLyoAaEbWr9oX1CVr",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "superpowers:brainstorming"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "1c9bf2d0997c",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 7996,
+        "end": 7997,
+        "entry_ids": [
+          "d8b49837-8e79-478e-925d-badbcbf7334a"
+        ],
+        "tool_use_id": "toolu_015Uv89vLyoAaEbWr9oX1CVr"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_015Uv89vLyoAaEbWr9oX1CVr"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: superpowers:brainstorming",
+        "default_collapsed": true
+      }
     }
   ],
   "session_metrics": {
