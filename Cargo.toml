@@ -37,3 +37,21 @@ unsafe_code = "deny"
 lto = true
 codegen-units = 1
 strip = true
+
+[workspace.dependencies]
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+camino = { version = "1", features = ["serde1"] }
+rustc-hash = "2"
+ignore = "0.4"
+oxc_parser = "0.128"
+oxc_ast = "0.128"
+oxc_span = "0.128"
+oxc_allocator = "0.128"
+oxc_resolver = "11"
+rayon = "1"
+regex = "1"
+blake3 = "1"
+dashmap = "5"
+tiktoken-rs = "0.6"
