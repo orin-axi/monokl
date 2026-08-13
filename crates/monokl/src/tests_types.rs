@@ -157,3 +157,71 @@ fn line_zero_valid() {
     assert_eq!(e.line, 0);
 }
 
+#[test]
+fn symbol_entry_full_round_trip_exact_shape() {
+    let json = r#"{"name":"foo","kind":"typeAlias","line":7,"signature":"sig","owner":"Own","traitImpl":"T","visibility":"public","kindDetail":"rust-impl"}"#;
+    let e: SymbolEntry = serde_json::from_str(json).unwrap();
+    assert_eq!(e.name, "foo");
+    assert_eq!(e.kind, SymbolKind::TypeAlias);
+    assert_eq!(e.line, 7);
+    assert_eq!(e.signature.as_deref(), Some("sig"));
+    assert_eq!(e.owner.as_deref(), Some("Own"));
+    assert_eq!(e.trait_impl.as_deref(), Some("T"));
+    assert_eq!(e.visibility, Some(Visibility::Public));
+    assert_eq!(e.kind_detail.as_deref(), Some("rust-impl"));
+
+    let reserialized = serde_json::to_string(&e).unwrap();
+    assert_eq!(reserialized, json);
+}
+
+#[test]
+fn kind_variant_count_and_order_pinned() {
+    let assert_shape = |k: SymbolKind| match k {
+        SymbolKind::Function
+        | SymbolKind::Method
+        | SymbolKind::Constructor
+        | SymbolKind::Class
+        | SymbolKind::Struct
+        | SymbolKind::Enum
+        | SymbolKind::Interface
+        | SymbolKind::TypeAlias
+        | SymbolKind::Property
+        | SymbolKind::Field
+        | SymbolKind::Variable
+        | SymbolKind::Module
+        | SymbolKind::Impl
+        | SymbolKind::Macro
+        | SymbolKind::Other => {}
+    };
+    assert_shape(SymbolKind::Function);
+
+    assert_eq!(SymbolKind::Function as usize, 0);
+    assert_eq!(SymbolKind::Method as usize, 1);
+    assert_eq!(SymbolKind::Constructor as usize, 2);
+    assert_eq!(SymbolKind::Class as usize, 3);
+    assert_eq!(SymbolKind::Struct as usize, 4);
+    assert_eq!(SymbolKind::Enum as usize, 5);
+    assert_eq!(SymbolKind::Interface as usize, 6);
+    assert_eq!(SymbolKind::TypeAlias as usize, 7);
+    assert_eq!(SymbolKind::Property as usize, 8);
+    assert_eq!(SymbolKind::Field as usize, 9);
+    assert_eq!(SymbolKind::Variable as usize, 10);
+    assert_eq!(SymbolKind::Module as usize, 11);
+    assert_eq!(SymbolKind::Impl as usize, 12);
+    assert_eq!(SymbolKind::Macro as usize, 13);
+    assert_eq!(SymbolKind::Other as usize, 14);
+}
+
+#[test]
+fn visibility_variant_count_and_order_pinned() {
+    let assert_shape = |v: Visibility| match v {
+        Visibility::Public | Visibility::Crate | Visibility::Module | Visibility::Private => {}
+    };
+    assert_shape(Visibility::Public);
+
+    assert_eq!(Visibility::Public as usize, 0);
+    assert_eq!(Visibility::Crate as usize, 1);
+    assert_eq!(Visibility::Module as usize, 2);
+    assert_eq!(Visibility::Private as usize, 3);
+}
+
