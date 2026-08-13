@@ -1,0 +1,39 @@
+Take a look at the ~/Projects/plugin-agents repo to understand our new SDD + semantic model way of coding + examples of our specs in the ~/Projects/callisto repo. We would like to comprehensively review our current codebase in the context of our goals to formulate specs and validate against those.
+
+  We want to make sure we're thinking about the entire library of crates across the entire repo when considering changes. Considering comphrehensively how our code is modeled and works together. We want to semantically model our architecture and address any issues/bugs within that semantic model view.
+
+---
+
+From the original doc can we prepare the full spec?
+
+---
+
+Keep going with what is spec’d out
+
+---
+
+Let's dig into the active things
+
+---
+
+yes
+
+---
+
+Let's make sure they are at the same confidence level please before we move to track 5
+
+---
+
+Proceed with a very high level of rigour to have a very well flushed out spec for implementeation. Think through corner cases, not jut the happy path right?
+
+---
+
+I've updated and installed plugins now
+
+---
+
+Did you finish??
+
+---
+
+Commit and keep going
