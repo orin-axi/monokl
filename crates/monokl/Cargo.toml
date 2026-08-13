@@ -10,3 +10,12 @@ categories.workspace  = true
 keywords    = ["monokl", "search", "ast", "semantic", "typescript"]
 description = "AST-aware semantic code search for TypeScript/JavaScript and Rust."
 publish     = ["orin-cargo"]
+
+[lib]
+name       = "monokl"
+path       = "src/lib.rs"
+
+[[bin]]
+name              = "monokl"
+path              = "src/main.rs"
+required-features = ["cli"]
