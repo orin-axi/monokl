@@ -136,3 +136,24 @@ fn explicit_null_optional_fields_to_none() {
     assert_eq!(e.kind_detail, None);
 }
 
+#[test]
+fn line_negative_errors() {
+    let json = r#"{"name":"foo","kind":"function","line":-1}"#;
+    let err = serde_json::from_str::<SymbolEntry>(json).unwrap_err();
+    assert!(err.to_string().contains("invalid value"));
+}
+
+#[test]
+fn line_non_integral_errors() {
+    let json = r#"{"name":"foo","kind":"function","line":1.5}"#;
+    let err = serde_json::from_str::<SymbolEntry>(json).unwrap_err();
+    assert!(err.to_string().contains("invalid type"));
+}
+
+#[test]
+fn line_zero_valid() {
+    let json = r#"{"name":"foo","kind":"function","line":0}"#;
+    let e: SymbolEntry = serde_json::from_str(json).unwrap();
+    assert_eq!(e.line, 0);
+}
+
