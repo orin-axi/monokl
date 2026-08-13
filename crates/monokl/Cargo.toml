@@ -31,3 +31,9 @@ lang-ts = [
     "dep:oxc_allocator",
     "dep:oxc_resolver",
 ]
+
+# CLI binary — clap + miette diagnostics.
+cli = ["dep:clap", "miette"]
+
+# Miette Diagnostic derive on MonoklError — forwarded to io-errors for full chain rendering.
+miette = ["dep:miette", "io-errors/miette"]
