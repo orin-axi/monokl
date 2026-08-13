@@ -76,4 +76,31 @@ pub enum MonoklError {
     /// target file does not start with the canonicalized root argument.
     #[error("path outside workspace root: {path}")]
     PathOutsideRoot { path: Utf8PathBuf },
+
+    /// AC-013: returned by `persist::load_cache` when
+    /// `cache.version != CACHE_VERSION || cache.config_hash != config_hash`.
+    /// `load_cache` has exactly two callers: `persist::init`, whose match
+    /// arm intercepts `Err(MonoklError::StaleDiskCache)` only (logs
+    /// AC-020B's `tracing::warn!` text below and substitutes a fresh empty
+    /// `CacheFile`, never returning `StaleDiskCache` to its own caller) --
+    /// every other `Err(e)`, including `Json` and `Io`, propagates
+    /// unmodified; and AC-013B: `persist::flush`'s
+    /// `state.cache_file.is_none()` fallback branch, which calls
+    /// `load_cache(..)?` directly with no match arm and no interception of
+    /// any kind -- any `Err`, including `StaleDiskCache` or `Json`,
+    /// propagates unmodified to `flush`'s own caller. In every call chain
+    /// shown in the spec corpus, `flush`'s sole caller
+    /// (`WorkspaceIndex::build`) calls `persist::init(..)?` first, so this
+    /// fallback branch is not exercised today -- but `flush` is
+    /// `pub(crate)`, not gated behind `init` at the type level, so nothing
+    /// in the source prevents a future in-crate caller from invoking it
+    /// first. This asymmetry is documented, not resolved here (non_goals):
+    /// fixing it means editing `persist.rs`'s verbatim `flush()` body, out
+    /// of scope for this error-contract track.
+    ///
+    /// AC-020B: `persist::init`'s interception arm additionally logs, on
+    /// the self-heal path only (never returned to any caller), this exact
+    /// text: "on-disk cache is stale (version or config_hash mismatch); starting fresh".
+    #[error("disk cache is stale (version or config hash mismatch)")]
+    StaleDiskCache,
 }
