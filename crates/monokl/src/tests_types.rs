@@ -125,3 +125,14 @@ fn missing_required_field_errors() {
     assert!(err_line.to_string().contains("missing field `line`"));
 }
 
+#[test]
+fn explicit_null_optional_fields_to_none() {
+    let json = r#"{"name":"foo","kind":"function","line":1,"signature":null,"owner":null,"traitImpl":null,"visibility":null,"kindDetail":null}"#;
+    let e: SymbolEntry = serde_json::from_str(json).unwrap();
+    assert_eq!(e.signature, None);
+    assert_eq!(e.owner, None);
+    assert_eq!(e.trait_impl, None);
+    assert_eq!(e.visibility, None);
+    assert_eq!(e.kind_detail, None);
+}
+
