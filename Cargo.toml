@@ -55,3 +55,13 @@ regex = "1"
 blake3 = "1"
 dashmap = "5"
 tiktoken-rs = "0.6"
+grep-regex = "0.1"
+grep-searcher = "0.1"
+clap = { version = "4", features = ["derive", "env"] }
+miette = { version = "7", features = ["fancy"] }
+tracing = "0.1"
+insta = { version = "1.47", features = ["yaml", "json"] }
+pretty_assertions = "1"
+proptest = "1"
+tempfile = "3"
+criterion = { version = "0.7", features = ["html_reports"] }
