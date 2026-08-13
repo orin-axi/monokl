@@ -1,0 +1,28 @@
+use crate::types::SymbolKind;
+
+#[test]
+fn kind_camel_case_forms() {
+    let pairs: [(SymbolKind, &str); 15] = [
+        (SymbolKind::Function, "\"function\""),
+        (SymbolKind::Method, "\"method\""),
+        (SymbolKind::Constructor, "\"constructor\""),
+        (SymbolKind::Class, "\"class\""),
+        (SymbolKind::Struct, "\"struct\""),
+        (SymbolKind::Enum, "\"enum\""),
+        (SymbolKind::Interface, "\"interface\""),
+        (SymbolKind::TypeAlias, "\"typeAlias\""),
+        (SymbolKind::Property, "\"property\""),
+        (SymbolKind::Field, "\"field\""),
+        (SymbolKind::Variable, "\"variable\""),
+        (SymbolKind::Module, "\"module\""),
+        (SymbolKind::Impl, "\"impl\""),
+        (SymbolKind::Macro, "\"macro\""),
+        (SymbolKind::Other, "\"other\""),
+    ];
+    for (variant, expected) in pairs {
+        let s = serde_json::to_string(&variant).unwrap();
+        assert_eq!(s, expected);
+        let round: SymbolKind = serde_json::from_str(expected).unwrap();
+        assert_eq!(round, variant);
+    }
+}
