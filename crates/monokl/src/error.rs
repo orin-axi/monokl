@@ -153,4 +153,14 @@ pub enum MonoklError {
         size: u64,
         cap: u64,
     },
+
+    /// AC-018: deliberately NOT auto-recovered via
+    /// `PoisonError::into_inner()` -- recovering would launder possibly-torn
+    /// shared state back into use. Two confirmed construction sites:
+    /// `analysis::persist::lock_state()`
+    /// (`context: "analysis::persist::CacheState"`) and
+    /// `pipeline::session::WorkspaceSession::standard_index`
+    /// (`context: "pipeline::session::WorkspaceSession::standard_index"`).
+    #[error("internal lock poisoned in {context} — a prior panic left shared state possibly inconsistent; this is a bug, please report")]
+    LockPoisoned { context: &'static str },
 }
