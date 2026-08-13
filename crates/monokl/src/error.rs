@@ -164,3 +164,22 @@ pub enum MonoklError {
     #[error("internal lock poisoned in {context} — a prior panic left shared state possibly inconsistent; this is a bug, please report")]
     LockPoisoned { context: &'static str },
 }
+
+/// AC-019: crate-wide alias, immediately after the enum definition.
+///
+/// AC-003: every `pub`/`pub(crate)` function in the spec corpus's Part 1
+/// and Part 3 verbatim code blocks whose own signature returns some
+/// `Result<_, _>` returns exactly this alias for its own `T`, with exactly
+/// one named exception: `git_scope::blob_at_ref_in_repo(repo, git_ref,
+/// path) -> std::result::Result<String, String>`, a `pub(crate)` helper
+/// whose bare-`String` error is mapped into `MonoklError::Git { operation:
+/// "show", .. }` at its sole call site, `git_scope::blob_at_ref`.
+///
+/// AC-021: within the scope of variants and call sites this spec resolves,
+/// `MonoklError`'s default posture is propagate-to-caller via `?` (or an
+/// explicit `map_err`/`Into::into` at the construction boundary, for the
+/// AC-003 exception). The sole documented exception is `StaleDiskCache`,
+/// and only when `load_cache` is reached via `persist::init` specifically
+/// -- not via `persist::flush`'s fallback, where the identical variant
+/// propagates uncaught (AC-013B).
+pub type Result<T> = std::result::Result<T, MonoklError>;
