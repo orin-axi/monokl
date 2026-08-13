@@ -115,3 +115,13 @@ fn extra_unknown_key_silently_discarded() {
     assert_eq!(e.owner.as_deref(), Some("RealOwner"));
 }
 
+#[test]
+fn missing_required_field_errors() {
+    let err_name = serde_json::from_str::<SymbolEntry>(r#"{"kind":"function","line":1}"#).unwrap_err();
+    assert!(err_name.to_string().contains("missing field `name`"));
+    let err_kind = serde_json::from_str::<SymbolEntry>(r#"{"name":"foo","line":1}"#).unwrap_err();
+    assert!(err_kind.to_string().contains("missing field `kind`"));
+    let err_line = serde_json::from_str::<SymbolEntry>(r#"{"name":"foo","kind":"function"}"#).unwrap_err();
+    assert!(err_line.to_string().contains("missing field `line`"));
+}
+
