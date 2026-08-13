@@ -42,3 +42,15 @@ fn visibility_camel_case_forms() {
         assert_eq!(round, variant);
     }
 }
+
+#[test]
+fn kind_unknown_variant_errors() {
+    let err = serde_json::from_str::<SymbolKind>("\"bogus\"").unwrap_err();
+    assert!(err.to_string().contains("unknown variant"));
+}
+
+#[test]
+fn visibility_unknown_variant_errors() {
+    let err = serde_json::from_str::<Visibility>("\"super\"").unwrap_err();
+    assert!(err.to_string().contains("unknown variant"));
+}
