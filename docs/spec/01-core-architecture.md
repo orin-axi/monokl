@@ -219,13 +219,13 @@ pub enum MonoklError {
     #[error("tokenizer init failed")]
     TokenizerInit,
 
-    #[error("json serialization failed")]
+    #[error("json parsing or serialization failed")]
     Json(#[from] serde_json::Error),
 
     #[error("path outside workspace root: {path}")]
     PathOutsideRoot { path: Utf8PathBuf },
 
-    #[error("disk cache is stale (version or config mismatch); run `mnkl init --rebuild`")]
+    #[error("disk cache is stale (version or config hash mismatch)")]
     StaleDiskCache,
 
     #[error("invalid git ref {ref_:?}: {reason}")]
