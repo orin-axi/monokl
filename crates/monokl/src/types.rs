@@ -53,3 +53,39 @@ pub enum Visibility {
     Module,
     Private,
 }
+
+/// monokl's per-symbol output record (AC-004, AC-005, AC-006, AC-010,
+/// AC-011, AC-012). Exactly 8 fields in this declaration order; derives
+/// `Debug`, `Clone`, `Serialize`, `Deserialize` only -- notably not
+/// `Copy`, not `PartialEq`, not `Eq` (unlike `SymbolKind` and
+/// `Visibility`), and no `#[non_exhaustive]`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SymbolEntry {
+    pub name: String,
+    pub kind: SymbolKind,
+    pub line: usize,
+    pub signature: Option<String>,
+    /// The sole canonical spelling of this field is `owner`, never
+    /// `impl_owner` (AC-007). `docs/spec/04-analysis-fidelity.md`
+    /// describes an implementation that, if written as literally
+    /// specified there (assigning to a field named `impl_owner`), would
+    /// fail to compile against this struct -- a conditional claim about
+    /// code that does not exist yet, not an assertion that the prose is
+    /// presently broken. `04-analysis-fidelity.md` currently uses
+    /// `impl_owner` seven times (lines 3, 19, 72, 77, 95, 100, 101) with
+    /// zero bare occurrences of `owner`. See
+    /// `docs/spec/07-edge-cases-and-failure-modes.md` Part 4 finding #1
+    /// (line 138). Any Rust code actually written against this contract
+    /// must use `owner`; `impl_owner` is not a legal field name on
+    /// `SymbolEntry`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trait_impl: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub visibility: Option<Visibility>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind_detail: Option<String>,
+}
+
