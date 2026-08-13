@@ -107,3 +107,11 @@ fn trait_impl_kind_detail_camel_case_keys() {
     assert!(!s.contains("\"kind_detail\""));
 }
 
+#[test]
+fn extra_unknown_key_silently_discarded() {
+    let json = r#"{"name":"foo","kind":"function","line":1,"owner":"RealOwner","impl_owner":"FakeOwner","bogusKey":123}"#;
+    let e: SymbolEntry = serde_json::from_str(json).unwrap();
+    assert_eq!(e.name, "foo");
+    assert_eq!(e.owner.as_deref(), Some("RealOwner"));
+}
+
