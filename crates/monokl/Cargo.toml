@@ -64,3 +64,7 @@ oxc_span      = { workspace = true, optional = true }
 oxc_allocator = { workspace = true, optional = true }
 # Versioned independently from OXC 0.128 suite — own 11.x line.
 oxc_resolver  = { workspace = true, optional = true }
+
+# CLI feature-gated deps.
+clap   = { workspace = true, optional = true }
+miette = { workspace = true, optional = true }
