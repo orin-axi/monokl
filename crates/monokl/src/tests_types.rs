@@ -1,4 +1,4 @@
-use crate::types::SymbolKind;
+use crate::types::{SymbolKind, Visibility};
 
 #[test]
 fn kind_camel_case_forms() {
@@ -23,6 +23,22 @@ fn kind_camel_case_forms() {
         let s = serde_json::to_string(&variant).unwrap();
         assert_eq!(s, expected);
         let round: SymbolKind = serde_json::from_str(expected).unwrap();
+        assert_eq!(round, variant);
+    }
+}
+
+#[test]
+fn visibility_camel_case_forms() {
+    let pairs: [(Visibility, &str); 4] = [
+        (Visibility::Public, "\"public\""),
+        (Visibility::Crate, "\"crate\""),
+        (Visibility::Module, "\"module\""),
+        (Visibility::Private, "\"private\""),
+    ];
+    for (variant, expected) in pairs {
+        let s = serde_json::to_string(&variant).unwrap();
+        assert_eq!(s, expected);
+        let round: Visibility = serde_json::from_str(expected).unwrap();
         assert_eq!(round, variant);
     }
 }
