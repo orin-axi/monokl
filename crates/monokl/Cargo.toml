@@ -68,3 +68,12 @@ oxc_resolver  = { workspace = true, optional = true }
 # CLI feature-gated deps.
 clap   = { workspace = true, optional = true }
 miette = { workspace = true, optional = true }
+
+
+[dev-dependencies]
+insta             = { workspace = true }
+pretty_assertions = { workspace = true }
+proptest          = { workspace = true }
+serde_json        = { workspace = true }
+tempfile          = { workspace = true }
+criterion         = { workspace = true }
