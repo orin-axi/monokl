@@ -37,3 +37,7 @@ cli = ["dep:clap", "miette"]
 
 # Miette Diagnostic derive on MonoklError — forwarded to io-errors for full chain rendering.
 miette = ["dep:miette", "io-errors/miette"]
+
+
+[dependencies]
+io-errors = { path = "../io-errors", version = "0.1", registry = "orin-cargo", default-features = false }
