@@ -56,3 +56,11 @@ serde_json    = { workspace = true }
 thiserror     = { workspace = true }
 tiktoken-rs   = { workspace = true }
 tracing       = { workspace = true }
+
+# lang-ts feature-gated OXC deps.
+oxc_parser    = { workspace = true, optional = true }
+oxc_ast       = { workspace = true, optional = true }
+oxc_span      = { workspace = true, optional = true }
+oxc_allocator = { workspace = true, optional = true }
+# Versioned independently from OXC 0.128 suite — own 11.x line.
+oxc_resolver  = { workspace = true, optional = true }
