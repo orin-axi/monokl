@@ -461,3 +461,22 @@ pub struct Diagnostic {
     pub message: String,
 }
 
+/// monokl's internal grep-hit representation (AC-015) -- matches
+/// `.claude/semantic-model/core-types.md`'s existing characterization of
+/// LineHit as "internal grep-hit representation only". Exactly 2 fields
+/// in this declaration order. Derives `Debug`, `Clone` only -- no
+/// `Serialize`, no `Deserialize`, no `PartialEq`/`Eq`/`Copy`, and no
+/// serde attribute macro on this struct at all. This is the only type in
+/// the SPEC-006 cluster with no serde derive of any kind: LineHit has no
+/// JSON representation whatsoever, and cannot be a field of any struct
+/// that itself derives `Serialize`/`Deserialize` without a manual
+/// implementation. Attempting either produces a compile-time failure (an
+/// unsatisfied-trait-bound diagnostic, E0277, naming `LineHit` as the
+/// type missing the required impl), not a runtime failure or a
+/// silently-wrong JSON shape.
+#[derive(Debug, Clone)]
+pub struct LineHit {
+    pub line_number: usize,
+    pub text: String,
+}
+
