@@ -1967,3 +1967,22 @@ fn search_limits_declaration_order_pinned_via_full_round_trip() {
     assert_eq!(reserialized, json);
 }
 
+
+#[test]
+fn search_limits_required_fields_missing_errors() {
+    let err_max_bytes =
+        serde_json::from_str::<SearchLimits>(r#"{"maxCandidates":5}"#).unwrap_err();
+    assert!(err_max_bytes.to_string().contains("missing field `maxBytes`"));
+
+    let err_max_candidates =
+        serde_json::from_str::<SearchLimits>(r#"{"maxBytes":100}"#).unwrap_err();
+    assert!(err_max_candidates.to_string().contains("missing field `maxCandidates`"));
+}
+
+#[test]
+fn search_limits_extra_unknown_key_silently_discarded() {
+    let json = r#"{"maxBytes":100,"maxCandidates":5,"bogusKey":123}"#;
+    let parsed: SearchLimits = serde_json::from_str(json).unwrap();
+    assert_eq!(parsed.max_bytes, 100);
+}
+
