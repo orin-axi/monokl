@@ -2491,3 +2491,152 @@ fn spec_007_no_skip_serializing_if_on_any_result_vec_field() {
     assert!(!block_obj.contains_key("matchedKeywords"));
 }
 
+/// Exhaustive compile-time field-type and derive-list pinning for every
+/// SPEC-007 type, mirroring `spec_005_all_field_types_pinned` and
+/// `spec_006_all_field_types_and_derives_pinned`'s rationale: serde treats
+/// several distinct Rust types identically on the wire (`String` vs
+/// `camino::Utf8PathBuf`, `usize` vs another integer width), so only a
+/// compile-time `let x: ExactType = value.field` binding -- not a
+/// runtime assertion -- can distinguish the declared field type from a
+/// serde-equivalent sibling. This test pins every field of all 6 SPEC-007
+/// types independently of any incidental typed binding earlier tests in
+/// this file may already exercise, so it alone is a complete inventory:
+///
+/// - SearchOptions: query: String, path: Utf8PathBuf, allow_tests: bool,
+///   no_gitignore: bool, limits: SearchLimits, exact: bool, language:
+///   Option<Language> -- 7 fields, all pinned below.
+/// - SearchLimits: max_results: Option<usize>, max_bytes: usize,
+///   max_tokens: Option<usize>, max_candidates: usize -- 4 fields, all
+///   pinned below.
+/// - Language: fieldless (4 variants) -- nothing to pin.
+/// - SearchResponse: results: Vec<RankedBlock>,
+///   total_blocks_before_truncation: usize, truncated: bool,
+///   truncation_marker: Option<String>, total_bytes: usize, total_tokens:
+///   usize, diagnostics: Vec<Diagnostic> -- 7 fields, all pinned below.
+/// - SymbolsResult: files: BTreeMap<Utf8PathBuf, Vec<SymbolEntry>>,
+///   total_symbol_count: usize, truncation_marker: Option<String>,
+///   diagnostics: Vec<Diagnostic> -- 4 fields, all pinned below.
+/// - DependentsResult: file: Utf8PathBuf, dependents: Vec<Utf8PathBuf>,
+///   imports: Vec<Utf8PathBuf>, total_dependent_count: usize,
+///   total_import_count: usize, truncation_marker: Option<String>,
+///   diagnostics: Vec<Diagnostic> -- 7 fields, all pinned below.
+#[test]
+fn spec_007_all_field_types_and_derives_pinned() {
+    fn assert_full_derives<T: std::fmt::Debug + Clone + serde::Serialize + serde::de::DeserializeOwned>() {}
+    fn assert_serialize_only_derives<T: std::fmt::Debug + Clone + serde::Serialize>() {}
+    fn assert_enum_derives<T: std::fmt::Debug + Clone + Copy + PartialEq + Eq + serde::Serialize + serde::de::DeserializeOwned>() {}
+
+    assert_full_derives::<SearchOptions>();
+    assert_full_derives::<SearchLimits>();
+    assert_enum_derives::<Language>();
+    assert_serialize_only_derives::<SearchResponse>();
+    assert_serialize_only_derives::<SymbolsResult>();
+    assert_serialize_only_derives::<DependentsResult>();
+
+    // -- SearchOptions { query, path, allow_tests, no_gitignore, limits, exact, language } --
+    let opts = SearchOptions {
+        query: "q".into(),
+        path: "src".into(),
+        allow_tests: true,
+        no_gitignore: true,
+        limits: SearchLimits::default(),
+        exact: true,
+        language: Some(Language::Rust),
+    };
+    let SearchOptions { query, path, allow_tests, no_gitignore, limits, exact, language } = opts;
+    let pinned_query: String = query;
+    let pinned_path: camino::Utf8PathBuf = path;
+    let pinned_allow_tests: bool = allow_tests;
+    let pinned_no_gitignore: bool = no_gitignore;
+    let pinned_limits: SearchLimits = limits;
+    let pinned_exact: bool = exact;
+    let pinned_language: Option<Language> = language;
+    assert_eq!(pinned_query, "q");
+    assert_eq!(pinned_path.as_str(), "src");
+    assert!(pinned_allow_tests);
+    assert!(pinned_no_gitignore);
+    assert_eq!(pinned_limits.max_bytes, 2_097_152);
+    assert!(pinned_exact);
+    assert_eq!(pinned_language, Some(Language::Rust));
+
+    // -- SearchLimits { max_results, max_bytes, max_tokens, max_candidates } --
+    let limits2 = SearchLimits { max_results: Some(1), max_bytes: 2, max_tokens: Some(3), max_candidates: 4 };
+    let SearchLimits { max_results, max_bytes, max_tokens, max_candidates } = limits2;
+    let pinned_max_results: Option<usize> = max_results;
+    let pinned_max_bytes: usize = max_bytes;
+    let pinned_max_tokens: Option<usize> = max_tokens;
+    let pinned_max_candidates: usize = max_candidates;
+    assert_eq!(pinned_max_results, Some(1));
+    assert_eq!(pinned_max_bytes, 2);
+    assert_eq!(pinned_max_tokens, Some(3));
+    assert_eq!(pinned_max_candidates, 4);
+
+    // -- SearchResponse { results, total_blocks_before_truncation, truncated,
+    //    truncation_marker, total_bytes, total_tokens, diagnostics } --
+    let resp = SearchResponse {
+        results: vec![sample_ranked_block()],
+        total_blocks_before_truncation: 1,
+        truncated: true,
+        truncation_marker: Some("m".into()),
+        total_bytes: 2,
+        total_tokens: 3,
+        diagnostics: vec![sample_diagnostic()],
+    };
+    let SearchResponse { results, total_blocks_before_truncation, truncated, truncation_marker, total_bytes, total_tokens, diagnostics } = resp;
+    let pinned_results: Vec<RankedBlock> = results;
+    let pinned_total_blocks: usize = total_blocks_before_truncation;
+    let pinned_truncated: bool = truncated;
+    let pinned_truncation_marker: Option<String> = truncation_marker;
+    let pinned_total_bytes: usize = total_bytes;
+    let pinned_total_tokens: usize = total_tokens;
+    let pinned_diagnostics: Vec<Diagnostic> = diagnostics;
+    assert_eq!(pinned_results.len(), 1);
+    assert_eq!(pinned_total_blocks, 1);
+    assert!(pinned_truncated);
+    assert_eq!(pinned_truncation_marker, Some("m".to_string()));
+    assert_eq!(pinned_total_bytes, 2);
+    assert_eq!(pinned_total_tokens, 3);
+    assert_eq!(pinned_diagnostics.len(), 1);
+
+    // -- SymbolsResult { files, total_symbol_count, truncation_marker, diagnostics } --
+    let mut files: BTreeMap<camino::Utf8PathBuf, Vec<SymbolEntry>> = BTreeMap::new();
+    files.insert("a.ts".into(), vec![sample_symbol_entry("s")]);
+    let sym = SymbolsResult { files, total_symbol_count: 1, truncation_marker: Some("m".into()), diagnostics: vec![sample_diagnostic()] };
+    let SymbolsResult { files, total_symbol_count, truncation_marker, diagnostics } = sym;
+    let pinned_files: BTreeMap<camino::Utf8PathBuf, Vec<SymbolEntry>> = files;
+    let pinned_total_symbol_count: usize = total_symbol_count;
+    let pinned_sym_truncation_marker: Option<String> = truncation_marker;
+    let pinned_sym_diagnostics: Vec<Diagnostic> = diagnostics;
+    assert_eq!(pinned_files.len(), 1);
+    assert_eq!(pinned_total_symbol_count, 1);
+    assert_eq!(pinned_sym_truncation_marker, Some("m".to_string()));
+    assert_eq!(pinned_sym_diagnostics.len(), 1);
+
+    // -- DependentsResult { file, dependents, imports, total_dependent_count,
+    //    total_import_count, truncation_marker, diagnostics } --
+    let dep = DependentsResult {
+        file: "f.ts".into(),
+        dependents: vec!["d.ts".into()],
+        imports: vec!["i.ts".into()],
+        total_dependent_count: 1,
+        total_import_count: 1,
+        truncation_marker: Some("m".into()),
+        diagnostics: vec![sample_diagnostic()],
+    };
+    let DependentsResult { file, dependents, imports, total_dependent_count, total_import_count, truncation_marker, diagnostics } = dep;
+    let pinned_dep_file: camino::Utf8PathBuf = file;
+    let pinned_dependents: Vec<camino::Utf8PathBuf> = dependents;
+    let pinned_imports: Vec<camino::Utf8PathBuf> = imports;
+    let pinned_total_dependent_count: usize = total_dependent_count;
+    let pinned_total_import_count: usize = total_import_count;
+    let pinned_dep_truncation_marker: Option<String> = truncation_marker;
+    let pinned_dep_diagnostics: Vec<Diagnostic> = diagnostics;
+    assert_eq!(pinned_dep_file.as_str(), "f.ts");
+    assert_eq!(pinned_dependents.len(), 1);
+    assert_eq!(pinned_imports.len(), 1);
+    assert_eq!(pinned_total_dependent_count, 1);
+    assert_eq!(pinned_total_import_count, 1);
+    assert_eq!(pinned_dep_truncation_marker, Some("m".to_string()));
+    assert_eq!(pinned_dep_diagnostics.len(), 1);
+}
+
