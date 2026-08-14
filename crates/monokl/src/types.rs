@@ -182,3 +182,23 @@ pub struct DependencyBinding {
     pub kind: BindingKind,
 }
 
+/// monokl's per-dependency-statement output record (AC-001). Exactly 3
+/// fields in this declaration order. Derives `Debug`, `Clone`,
+/// `Serialize`, `Deserialize` only -- no `Copy`/`PartialEq`/`Eq`, no
+/// `#[non_exhaustive]`. Only `bindings` carries a field-level attribute:
+/// `#[serde(default)]` with no `skip_serializing_if`, so an empty
+/// `bindings` vec still serializes its key ("bindings":[]) while a missing
+/// "bindings" key still deserializes leniently to an empty vec -- this is
+/// load-bearing, unlike an `Option<T>` field's `#[serde(default)]`: a
+/// `Vec<T>` field gets no implicit missing-key deserialize leniency from
+/// serde's derive macro on its own. `line` and `target` carry no
+/// field-level attributes and are required.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DependencyRecord {
+    pub line: usize,
+    #[serde(default)]
+    pub bindings: Vec<DependencyBinding>,
+    pub target: DependencyTarget,
+}
+
