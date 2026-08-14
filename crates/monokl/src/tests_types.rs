@@ -2386,3 +2386,28 @@ fn symbols_result_total_symbol_count_invariant_mandated_but_not_type_enforced() 
     let _ = serde_json::to_string(&violating).unwrap();
 }
 
+use crate::types::DependentsResult;
+
+#[test]
+fn dependents_result_declaration_order_pinned_via_exact_serialize() {
+    let diag = Diagnostic { kind: DiagnosticKind::Skipped, path: Some("src/a.ts".into()), message: "d".into() };
+    let dep = DependentsResult {
+        file: "src/foo.ts".into(),
+        dependents: vec!["src/bar.ts".into(), "src/baz.ts".into()],
+        imports: vec!["src/lib.ts".into()],
+        total_dependent_count: 2,
+        total_import_count: 1,
+        truncation_marker: Some("...".into()),
+        diagnostics: vec![diag],
+    };
+    let expected = r#"{"file":"src/foo.ts","dependents":["src/bar.ts","src/baz.ts"],"imports":["src/lib.ts"],"totalDependentCount":2,"totalImportCount":1,"truncationMarker":"...","diagnostics":[{"kind":"skipped","path":"src/a.ts","message":"d"}]}"#;
+    assert_eq!(serde_json::to_string(&dep).unwrap(), expected);
+}
+
+#[test]
+fn dependents_result_serialize_only_no_deserialize() {
+    fn assert_serialize_only<T: std::fmt::Debug + Clone + serde::Serialize>() {}
+    assert_serialize_only::<DependentsResult>();
+    assert!(!DeProbe::<DependentsResult>::IS);
+}
+
