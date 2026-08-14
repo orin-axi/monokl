@@ -2171,3 +2171,73 @@ fn search_options_limits_whole_value_type_mismatches() {
     assert!(!err.to_string().contains("expected struct SearchLimits"));
 }
 
+#[test]
+fn search_options_limits_array_form_contract() {
+    // STEP 1 (element-type check, always runs first, regardless of length):
+    for (limits_value, expected_snippet) in [
+        (r#"["a",1,2]"#, "invalid type: string \"a\", expected usize"),
+        ("[1,-2,3]", "invalid value: integer `-2`, expected usize"),
+        ("[true]", "invalid type: boolean `true`, expected usize"),
+        (r#"["a",1,2,3,4]"#, "invalid type: string \"a\", expected usize"),
+        ("[1,-2,3,4,5]", "invalid value: integer `-2`, expected usize"),
+        (
+            r#"["a",1e309,3,4]"#,
+            "invalid type: string \"a\", expected usize",
+        ),
+        (
+            "[1,18446744073709551616,3,4]",
+            "invalid type: floating point `1.8446744073709552e+19`, expected usize",
+        ),
+    ] {
+        let json = search_options_with_limits_json(limits_value);
+        let err = serde_json::from_str::<SearchOptions>(&json).unwrap_err();
+        assert!(err.to_string().contains(expected_snippet), "limits={limits_value} err={err}");
+    }
+
+    // Position 1 out-of-range literal fails "number out of range" only
+    // because position 0 already passed its own check.
+    let json = search_options_with_limits_json("[1,1e309,3,4]");
+    let err = serde_json::from_str::<SearchOptions>(&json).unwrap_err();
+    assert!(err.to_string().contains("number out of range"));
+
+    // Position 4+ out-of-range literal is never reached by STEP 1 at all --
+    // surfaces as surplus input (STEP 2's trailing-characters rule), not
+    // "number out of range".
+    let json_surplus = search_options_with_limits_json("[1,2,3,4,1e309]");
+    let err_surplus = serde_json::from_str::<SearchOptions>(&json_surplus).unwrap_err();
+    assert!(err_surplus.to_string().contains("trailing characters"));
+    assert!(!err_surplus.to_string().contains("number out of range"));
+
+    // STEP 2 (length check, runs only once every checked element passes):
+    let json_empty = search_options_with_limits_json("[]");
+    let err_empty = serde_json::from_str::<SearchOptions>(&json_empty).unwrap_err();
+    assert!(err_empty.to_string().contains("invalid length 0, expected struct SearchLimits with 4 elements"));
+
+    let json_three = search_options_with_limits_json("[1,2,3]");
+    let err_three = serde_json::from_str::<SearchOptions>(&json_three).unwrap_err();
+    assert!(err_three.to_string().contains("invalid length 3, expected struct SearchLimits with 4 elements"));
+
+    let json_five = search_options_with_limits_json("[1,2,3,4,5]");
+    let err_five = serde_json::from_str::<SearchOptions>(&json_five).unwrap_err();
+    assert!(err_five.to_string().contains("trailing characters"));
+
+    let json_five_str = search_options_with_limits_json(r#"[1,2,3,4,"x"]"#);
+    let err_five_str = serde_json::from_str::<SearchOptions>(&json_five_str).unwrap_err();
+    assert!(err_five_str.to_string().contains("trailing characters"));
+
+    // Exactly 4 elements succeeds, deserializing positionally.
+    let json_ok = search_options_with_limits_json("[50,100,null,5]");
+    let parsed: SearchOptions = serde_json::from_str(&json_ok).unwrap();
+    assert_eq!(parsed.limits.max_results, Some(50));
+    assert_eq!(parsed.limits.max_bytes, 100);
+    assert_eq!(parsed.limits.max_tokens, None);
+    assert_eq!(parsed.limits.max_candidates, 5);
+
+    let json_ok_nulls = search_options_with_limits_json("[null,2,null,4]");
+    let parsed_nulls: SearchOptions = serde_json::from_str(&json_ok_nulls).unwrap();
+    assert_eq!(parsed_nulls.limits.max_results, None);
+    assert_eq!(parsed_nulls.limits.max_bytes, 2);
+    assert_eq!(parsed_nulls.limits.max_tokens, None);
+    assert_eq!(parsed_nulls.limits.max_candidates, 4);
+}
+
