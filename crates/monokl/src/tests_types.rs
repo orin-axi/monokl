@@ -2853,3 +2853,21 @@ fn tsconfig_mode_no_default_impl_pinned() {
     // Positive control (proves the probe itself isn't just always false).
     assert!(DefaultProbe::<TsData>::IS);
 }
+use crate::types::WorkspaceOptions;
+
+#[test]
+fn workspace_options_field_declaration_order_and_types_pinned() {
+    // WorkspaceOptions has no serde derive (AC-003), so field order is
+    // unobservable on the wire -- same situation as LineHit (SPEC-006
+    // AC-015). Reuse the include_str! technique.
+    let src = include_str!("types.rs");
+    let block = enum_declaration_block(src, "pub struct WorkspaceOptions");
+    assert_declaration_order(block, &["root", "tsconfig"]);
+
+    let opts = WorkspaceOptions { root: camino::Utf8PathBuf::from("proj"), tsconfig: TsconfigMode::Skip };
+    let WorkspaceOptions { root, tsconfig } = opts;
+    let pinned_root: camino::Utf8PathBuf = root;
+    let pinned_tsconfig: TsconfigMode = tsconfig;
+    assert_eq!(pinned_root.as_str(), "proj");
+    assert!(matches!(pinned_tsconfig, TsconfigMode::Skip));
+}
