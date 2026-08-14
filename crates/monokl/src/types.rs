@@ -626,3 +626,14 @@ pub struct DependentsResult {
     pub diagnostics: Vec<Diagnostic>,
 }
 
+/// monokl's tsconfig-resolution mode for a workspace (AC-001, AC-002).
+/// Exactly 3 variants in this declaration order -- Auto and Skip carry no
+/// data; Manual wraps a single Utf8PathBuf. Derives Debug, Clone only -- no
+/// Serialize, no Deserialize, no Copy (Utf8PathBuf is not Copy), no
+/// PartialEq/Eq, no Default, no #[non_exhaustive].
+#[derive(Debug, Clone)]
+pub enum TsconfigMode {
+    Auto,
+    Manual(Utf8PathBuf),
+    Skip,
+}
