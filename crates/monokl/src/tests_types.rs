@@ -627,3 +627,141 @@ fn rust_path_anchor_unknown_variant_and_second_key_rejected() {
     assert!(err2.to_string().contains("expected value"));
 }
 
+#[test]
+fn extra_unknown_key_silently_discarded_remaining_cluster_types() {
+    let json = r#"{"line":1,"target":{"kind":"file","specifier":"x","resolved":null,"is_relative":false},"bogusKey":123}"#;
+    let rec: DependencyRecord = serde_json::from_str(json).unwrap();
+    assert_eq!(rec.line, 1);
+
+    let json2 = r#"{"imported":"a","local":"b","kind":"named","bogusKey":123}"#;
+    let binding: DependencyBinding = serde_json::from_str(json2).unwrap();
+    assert_eq!(binding.imported, "a");
+
+    let json3 = r#"{"name":"foo","isExpression":false,"isSpread":false,"bogusKey":123}"#;
+    let attr: JsxAttribute = serde_json::from_str(json3).unwrap();
+    assert_eq!(attr.name, "foo");
+
+    let json4 = r#"{"name":"Foo","isHtml":true,"line":1,"attributes":[],"bogusKey":123}"#;
+    let elem: JsxElementEntry = serde_json::from_str(json4).unwrap();
+    assert_eq!(elem.name, "Foo");
+
+    let json5 = r#"{"bogusKey":123}"#;
+    let _: PythonData = serde_json::from_str(json5).unwrap();
+    let _: GoData = serde_json::from_str(json5).unwrap();
+    let _: JavaData = serde_json::from_str(json5).unwrap();
+}
+
+#[test]
+fn dependency_record_full_round_trip_exact_shape() {
+    let json = r#"{"line":10,"bindings":[{"imported":"a","local":"b","kind":"named"}],"target":{"kind":"file","specifier":"./foo.ts","resolved":"src/foo.ts","is_relative":true}}"#;
+    let rec: DependencyRecord = serde_json::from_str(json).unwrap();
+    assert_eq!(rec.line, 10);
+    assert_eq!(rec.bindings.len(), 1);
+    assert_eq!(rec.bindings[0].imported, "a");
+    assert_eq!(rec.bindings[0].local, "b");
+    assert!(matches!(rec.bindings[0].kind, BindingKind::Named));
+    assert!(matches!(
+        rec.target,
+        DependencyTarget::File { ref specifier, resolved: Some(ref resolved), is_relative: true }
+            if specifier == "./foo.ts" && resolved.as_str() == "src/foo.ts"
+    ));
+
+    let reserialized = serde_json::to_string(&rec).unwrap();
+    assert_eq!(reserialized, json);
+}
+
+#[test]
+fn dependency_binding_full_round_trip_exact_shape() {
+    let json = r#"{"imported":"foo","local":"bar","kind":"glob"}"#;
+    let binding: DependencyBinding = serde_json::from_str(json).unwrap();
+    assert_eq!(binding.imported, "foo");
+    assert_eq!(binding.local, "bar");
+    assert!(matches!(binding.kind, BindingKind::Glob));
+
+    let reserialized = serde_json::to_string(&binding).unwrap();
+    assert_eq!(reserialized, json);
+}
+
+#[test]
+fn export_record_full_round_trip_exact_shape() {
+    let json = r#"{"name":"foo","line":5,"reExport":true}"#;
+    let rec: ExportRecord = serde_json::from_str(json).unwrap();
+    assert_eq!(rec.name, "foo");
+    assert_eq!(rec.line, 5);
+    assert!(rec.re_export);
+
+    let reserialized = serde_json::to_string(&rec).unwrap();
+    assert_eq!(reserialized, json);
+}
+
+#[test]
+fn jsx_attribute_full_round_trip_exact_shape() {
+    let json = r#"{"name":"onClick","stringValue":"handleClick","isExpression":true,"isSpread":false}"#;
+    let attr: JsxAttribute = serde_json::from_str(json).unwrap();
+    assert_eq!(attr.name, "onClick");
+    assert_eq!(attr.string_value.as_deref(), Some("handleClick"));
+    assert!(attr.is_expression);
+    assert!(!attr.is_spread);
+
+    let reserialized = serde_json::to_string(&attr).unwrap();
+    assert_eq!(reserialized, json);
+}
+
+#[test]
+fn jsx_element_entry_full_round_trip_exact_shape() {
+    let json = r#"{"name":"div","isHtml":true,"line":12,"attributes":[{"name":"id","stringValue":"main","isExpression":false,"isSpread":false}]}"#;
+    let elem: JsxElementEntry = serde_json::from_str(json).unwrap();
+    assert_eq!(elem.name, "div");
+    assert!(elem.is_html);
+    assert_eq!(elem.line, 12);
+    assert_eq!(elem.attributes.len(), 1);
+    assert_eq!(elem.attributes[0].name, "id");
+    assert_eq!(elem.attributes[0].string_value.as_deref(), Some("main"));
+    assert!(!elem.attributes[0].is_expression);
+    assert!(!elem.attributes[0].is_spread);
+
+    let reserialized = serde_json::to_string(&elem).unwrap();
+    assert_eq!(reserialized, json);
+}
+
+#[test]
+fn ts_data_full_round_trip_exact_shape() {
+    let json = r#"{"jsxElements":[{"name":"Foo","isHtml":false,"line":3,"attributes":[]}],"typeOnlyImports":["TypeA"]}"#;
+    let data: TsData = serde_json::from_str(json).unwrap();
+    assert_eq!(data.jsx_elements.len(), 1);
+    assert_eq!(data.jsx_elements[0].name, "Foo");
+    assert_eq!(data.type_only_imports, vec!["TypeA".to_string()]);
+    assert_eq!(data.unresolved_aliases.len(), 0);
+
+    let reserialized = serde_json::to_string(&data).unwrap();
+    assert_eq!(reserialized, json);
+}
+
+#[test]
+fn dependency_target_rust_path_full_round_trip_exact_shape() {
+    let json = r#"{"kind":"rustPath","segments":["crate","foo","Bar"],"anchor":"super","resolved":"target/foo.rs"}"#;
+    let target: DependencyTarget = serde_json::from_str(json).unwrap();
+    assert!(matches!(
+        target,
+        DependencyTarget::RustPath { ref segments, anchor: RustPathAnchor::Super, resolved: Some(ref resolved) }
+            if segments == &["crate", "foo", "Bar"] && resolved.as_str() == "target/foo.rs"
+    ));
+
+    let reserialized = serde_json::to_string(&target).unwrap();
+    assert_eq!(reserialized, json);
+}
+
+#[test]
+fn dependency_target_namespace_full_round_trip_exact_shape() {
+    let json = r#"{"kind":"namespace","segments":["System","Collections"],"is_static":true,"alias":"Coll"}"#;
+    let target: DependencyTarget = serde_json::from_str(json).unwrap();
+    assert!(matches!(
+        target,
+        DependencyTarget::Namespace { ref segments, is_static: true, alias: Some(ref alias) }
+            if segments == &["System", "Collections"] && alias == "Coll"
+    ));
+
+    let reserialized = serde_json::to_string(&target).unwrap();
+    assert_eq!(reserialized, json);
+}
+
