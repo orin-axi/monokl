@@ -437,3 +437,27 @@ pub enum DiagnosticKind {
     Warning,
 }
 
+/// monokl's diagnostic record (AC-010, AC-011). Exactly 3 fields in this
+/// declaration order. Derives `Debug`, `Clone`, `Serialize`,
+/// `Deserialize` only -- no `Copy`/`PartialEq`/`Eq`, no
+/// `#[non_exhaustive]`. `kind` and `message` carry no field-level
+/// attribute and are required on deserialize. `path` also carries no
+/// field-level attribute; as an `Option<T>` field it deserializes
+/// leniently to `None` on a missing or explicitly-null "path" key, and
+/// always emits its key with a JSON null on serialize when `None`. This
+/// is the type whose instances would populate every `diagnostics:
+/// Vec<Diagnostic>` field across monokl's result types
+/// (docs/spec/07-edge-cases-and-failure-modes.md Part 2, High item 3) --
+/// this track locks only this type's own shape; which command populates
+/// it, and how, is each command's own implementation track. A
+/// `Diagnostic` value carries no information distinguishing which
+/// command or code path produced it beyond whatever text the caller puts
+/// in `message` -- there is no source/origin field on this type.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Diagnostic {
+    pub kind: DiagnosticKind,
+    pub path: Option<Utf8PathBuf>,
+    pub message: String,
+}
+
