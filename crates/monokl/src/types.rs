@@ -571,3 +571,22 @@ impl Default for SearchOptions {
     }
 }
 
+/// monokl's top-level search-command response (AC-011, AC-012). Derives
+/// `Debug`, `Clone`, `Serialize` only -- no `Deserialize`: this type can
+/// never be parsed from JSON. Exactly 7 fields in this declaration order.
+/// No field carries any field-level serde attribute -- `results` and
+/// `diagnostics` always emit their key as an explicit empty JSON array
+/// even when empty (no `skip_serializing_if`), and `truncation_marker`
+/// always emits its key with a JSON null when `None`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchResponse {
+    pub results: Vec<RankedBlock>,
+    pub total_blocks_before_truncation: usize,
+    pub truncated: bool,
+    pub truncation_marker: Option<String>,
+    pub total_bytes: usize,
+    pub total_tokens: usize,
+    pub diagnostics: Vec<Diagnostic>,
+}
+
