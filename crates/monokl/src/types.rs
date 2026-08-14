@@ -267,3 +267,20 @@ pub struct GoData {}
 #[serde(rename_all = "camelCase")]
 pub struct JavaData {}
 
+/// TypeScript-specific analysis output (AC-017) -- the only one of the 5
+/// per-language data structs with real fields. Of its 3 Vec fields, all
+/// carry #[serde(default)] (load-bearing missing-key leniency, per
+/// DependencyRecord.bindings), but only unresolved_aliases also carries
+/// skip_serializing_if = "Vec::is_empty": jsx_elements and
+/// type_only_imports always serialize their key even when empty.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TsData {
+    #[serde(default)]
+    pub jsx_elements: Vec<JsxElementEntry>,
+    #[serde(default)]
+    pub type_only_imports: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unresolved_aliases: Vec<String>,
+}
+
