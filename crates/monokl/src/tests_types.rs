@@ -564,3 +564,22 @@ fn lang_data_ts_and_jsx_elements_methods() {
     }
 }
 
+
+#[test]
+fn extra_unknown_key_silently_discarded_across_cluster() {
+    let json = r#"{"name":"foo","line":1,"reExport":false,"bogusKey":123}"#;
+    let rec: ExportRecord = serde_json::from_str(json).unwrap();
+    assert_eq!(rec.name, "foo");
+
+    let json2 = r#"{"bogusKey":123}"#;
+    let _: RustData = serde_json::from_str(json2).unwrap();
+
+    let json3 = r#"{"kind":"file","specifier":"x","resolved":null,"is_relative":false,"bogusKey":123}"#;
+    let dt: DependencyTarget = serde_json::from_str(json3).unwrap();
+    assert!(matches!(dt, DependencyTarget::File { .. }));
+
+    let json4 = r#"{"language":"rust","data":{},"bogusKey":123}"#;
+    let ld: LangData = serde_json::from_str(json4).unwrap();
+    assert!(matches!(ld, LangData::Rust(_)));
+}
+
