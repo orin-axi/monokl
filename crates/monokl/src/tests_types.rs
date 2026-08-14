@@ -2814,3 +2814,42 @@ fn tsconfig_mode_no_serde_and_manual_payload_type_pinned() {
         TsconfigMode::Auto | TsconfigMode::Skip => panic!("expected Manual variant"),
     }
 }
+/// Trivial generalization of `SerProbe`/`DeProbe` (defined above) to `Default`
+/// -- the same const-specialization technique proving trait-impl ABSENCE
+/// (not just presence, which a plain generic bound-check function can prove)
+/// applies unchanged to any trait, not just Serialize/Deserialize.
+struct DefaultProbe<T>(std::marker::PhantomData<T>);
+trait NotDefault { const IS: bool = false; }
+impl<T> NotDefault for DefaultProbe<T> {}
+impl<T: Default> DefaultProbe<T> { const IS: bool = true; }
+
+/// Further generalizations of `DefaultProbe` (immediately above) to `Copy`,
+/// `PartialEq`, and `Eq` -- each a direct 4-line copy of the same
+/// const-specialization shape, substituting only the probed trait. Exercised
+/// in T-019's consolidated derive-list sweep against TsconfigMode and
+/// WorkspaceOptions, with SymbolKind (already known to derive Copy,
+/// PartialEq, Eq) as positive control.
+struct CopyProbe<T>(std::marker::PhantomData<T>);
+trait NotCopy { const IS: bool = false; }
+impl<T> NotCopy for CopyProbe<T> {}
+impl<T: Copy> CopyProbe<T> { const IS: bool = true; }
+
+struct PartialEqProbe<T>(std::marker::PhantomData<T>);
+trait NotPartialEq { const IS: bool = false; }
+impl<T> NotPartialEq for PartialEqProbe<T> {}
+impl<T: PartialEq> PartialEqProbe<T> { const IS: bool = true; }
+
+struct EqProbe<T>(std::marker::PhantomData<T>);
+trait NotEq { const IS: bool = false; }
+impl<T> NotEq for EqProbe<T> {}
+impl<T: Eq> EqProbe<T> { const IS: bool = true; }
+
+#[test]
+fn tsconfig_mode_no_default_impl_pinned() {
+    // AC-006: no #[derive(Default)] and no hand-written impl Default anywhere
+    // -- a categorically different absence from SPEC-007's inert-but-present
+    // Default impls on SearchOptions/SearchLimits.
+    assert!(!DefaultProbe::<TsconfigMode>::IS);
+    // Positive control (proves the probe itself isn't just always false).
+    assert!(DefaultProbe::<TsData>::IS);
+}
