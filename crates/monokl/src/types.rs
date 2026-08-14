@@ -229,3 +229,17 @@ pub struct JsxAttribute {
     pub is_spread: bool,
 }
 
+/// A single JSX element usage (AC-011). Exactly 4 fields in this
+/// declaration order. Unlike DependencyRecord.bindings, attributes carries
+/// no #[serde(default)]: Vec<T> gets no implicit missing-key leniency from
+/// serde's derive macro, so all 4 fields including attributes are required
+/// on deserialize.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JsxElementEntry {
+    pub name: String,
+    pub is_html: bool,
+    pub line: usize,
+    pub attributes: Vec<JsxAttribute>,
+}
+
