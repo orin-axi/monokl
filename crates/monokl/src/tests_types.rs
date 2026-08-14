@@ -348,3 +348,18 @@ fn dependency_target_option_fields_lenient_on_missing_key() {
     assert!(matches!(v2, DependencyTarget::Namespace { alias: None, .. }));
 }
 
+#[test]
+fn dependency_target_namespace_round_trips_normally() {
+    let ns = DependencyTarget::Namespace {
+        segments: vec!["System".into(), "Collections".into()],
+        is_static: false,
+        alias: Some("Coll".into()),
+    };
+    let s = serde_json::to_string(&ns).unwrap();
+    let round: DependencyTarget = serde_json::from_str(&s).unwrap();
+    assert!(matches!(
+        round,
+        DependencyTarget::Namespace { alias: Some(ref a), is_static: false, .. } if a == "Coll"
+    ));
+}
+
