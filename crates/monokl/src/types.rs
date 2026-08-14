@@ -284,3 +284,54 @@ pub struct TsData {
     pub unresolved_aliases: Vec<String>,
 }
 
+/// Post-research correction (AC-015): Go/Java replace an earlier CSharp
+/// variant -- the language roadmap dropped C# and added Go and Java
+/// instead (docs/spec/05-research-and-decisions.md §6). GoData/JavaData
+/// are empty placeholders today, same as PythonData -- populated once
+/// those analyzers land. LangData's own #[non_exhaustive] protects only
+/// enum-level exhaustive-match compatibility; it does not extend to
+/// GoData/JavaData's own fields -- adding real fields to those structs
+/// later is a separate, unresolved compatibility question.
+///
+/// Per-language analysis output (AC-012, AC-013, AC-014). Adjacently
+/// tagged (tag = "language", content = "data"): the tag and the variant's
+/// payload stay in two separate keys of the same object (e.g. Ts
+/// serializes as {"language":"typescript","data":{...}}) -- a
+/// structurally different JSON shape from DependencyTarget's internal
+/// tagging, which flattens variant fields alongside the tag key with no
+/// separate content wrapper. Each variant carries its own explicit
+/// #[serde(rename = ...)] tag value; only Ts's rename to "typescript" is
+/// functionally necessary (the default transform would otherwise give
+/// "ts") -- Rust/Python/Go/Java's renames are redundant with what the
+/// default transform already produces. No #[serde(other)] fallback; an
+/// unrecognized "language" value fails with an unknown-variant error.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", tag = "language", content = "data")]
+#[non_exhaustive]
+pub enum LangData {
+    #[serde(rename = "typescript")]
+    Ts(TsData),
+    #[serde(rename = "rust")]
+    Rust(RustData),
+    #[serde(rename = "python")]
+    Python(PythonData),
+    #[serde(rename = "go")]
+    Go(GoData),
+    #[serde(rename = "java")]
+    Java(JavaData),
+}
+
+impl LangData {
+    /// Returns `Some(&TsData)` iff `self` is the `Ts` variant, `None`
+    /// otherwise. Never panics (AC-016).
+    pub fn ts(&self) -> Option<&TsData> {
+        if let LangData::Ts(ts) = self { Some(ts) } else { None }
+    }
+
+    /// Delegates to `ts()`: `TsData.jsx_elements` as a slice when `self` is
+    /// `Ts`, an empty slice otherwise. Never panics (AC-016).
+    pub fn jsx_elements(&self) -> &[JsxElementEntry] {
+        self.ts().map_or(&[], |ts| ts.jsx_elements.as_slice())
+    }
+}
+
