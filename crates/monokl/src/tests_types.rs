@@ -2049,6 +2049,9 @@ fn search_options_default_impl_values() {
     assert!(!d.allow_tests);
     assert!(!d.no_gitignore);
     assert_eq!(d.limits.max_results, Some(50));
+    assert_eq!(d.limits.max_bytes, 2_097_152);
+    assert_eq!(d.limits.max_tokens, Some(20_000));
+    assert_eq!(d.limits.max_candidates, 1_000);
     assert!(!d.exact);
     assert_eq!(d.language, None);
 }
