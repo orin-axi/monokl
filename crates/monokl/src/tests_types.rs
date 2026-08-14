@@ -363,3 +363,15 @@ fn dependency_target_namespace_round_trips_normally() {
     ));
 }
 
+use crate::types::DependencyBinding;
+
+#[test]
+fn dependency_binding_missing_required_field_errors() {
+    let err_imported = serde_json::from_str::<DependencyBinding>(r#"{"local":"x","kind":"named"}"#).unwrap_err();
+    assert!(err_imported.to_string().contains("missing field `imported`"));
+    let err_local = serde_json::from_str::<DependencyBinding>(r#"{"imported":"x","kind":"named"}"#).unwrap_err();
+    assert!(err_local.to_string().contains("missing field `local`"));
+    let err_kind = serde_json::from_str::<DependencyBinding>(r#"{"imported":"x","local":"y"}"#).unwrap_err();
+    assert!(err_kind.to_string().contains("missing field `kind`"));
+}
+
