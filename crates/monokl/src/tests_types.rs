@@ -3037,3 +3037,25 @@ fn extract_request_line_start_and_line_end_numeric_three_way_rule() {
     let err_range_end = serde_json::from_str::<ExtractRequest>(r#"{"file":"a.ts","lineEnd":1e309}"#).unwrap_err();
     assert!(err_range_end.to_string().contains("number out of range"));
 }
+
+#[test]
+fn extract_request_swapped_range_and_zero_start_unenforced() {
+    // AC-010: no cross-field constraint enforces line_start <= line_end --
+    // docs/spec/07-edge-cases-and-failure-modes.md Part 1 finding #15
+    // documents the extract command's own consequence (a silent empty
+    // result, not an error); this test locks only that the swapped range
+    // deserializes successfully, per this track's own scope.
+    let swapped: ExtractRequest =
+        serde_json::from_str(r#"{"file":"a.ts","lineStart":100,"lineEnd":5}"#).unwrap();
+    assert_eq!(swapped.line_start, Some(100));
+    assert_eq!(swapped.line_end, Some(5));
+    assert!(swapped.line_start > swapped.line_end);
+
+    // AC-011: no lower bound on line_start/line_end -- finding #23 documents
+    // that extract --line-start 0 isn't rejected despite the codebase's
+    // 1-indexed convention elsewhere; this test locks only that 0
+    // deserializes to Some(0), like any other valid usize.
+    let zero_start: ExtractRequest =
+        serde_json::from_str(r#"{"file":"a.ts","lineStart":0,"lineEnd":10}"#).unwrap();
+    assert_eq!(zero_start.line_start, Some(0));
+}
