@@ -1986,3 +1986,21 @@ fn search_limits_extra_unknown_key_silently_discarded() {
     assert_eq!(parsed.max_bytes, 100);
 }
 
+#[test]
+fn search_limits_option_fields_default_to_none_not_default_impl_values() {
+    // AC-005's central divergence: JSON-omission yields None, NOT
+    // Some(50)/Some(20_000) -- the values SearchLimits::default() would
+    // supply for the identical "caller didn't specify" intent.
+    let json = r#"{"maxBytes":100,"maxCandidates":5}"#;
+    let parsed: SearchLimits = serde_json::from_str(json).unwrap();
+    assert_eq!(parsed.max_results, None);
+    assert_eq!(parsed.max_tokens, None);
+    assert_ne!(parsed.max_results, SearchLimits::default().max_results);
+    assert_ne!(parsed.max_tokens, SearchLimits::default().max_tokens);
+
+    let json_null = r#"{"maxResults":null,"maxBytes":100,"maxTokens":null,"maxCandidates":5}"#;
+    let parsed_null: SearchLimits = serde_json::from_str(json_null).unwrap();
+    assert_eq!(parsed_null.max_results, None);
+    assert_eq!(parsed_null.max_tokens, None);
+}
+
