@@ -1485,3 +1485,32 @@ fn ranked_block_flatten_key_shape_no_collision_and_parent_context_null() {
     assert_eq!(obj.get("parentContext"), Some(&serde_json::Value::Null));
 }
 
+#[test]
+fn ranked_block_flatten_preserves_skip_serializing_if() {
+    let block = CodeBlock {
+        file: "src/bar.rs".into(),
+        line_start: 1,
+        line_end: 2,
+        node_kind: SymbolKind::Struct,
+        code: "struct Bar;".into(),
+        symbol_signature: None,
+        matched_lines: vec![],
+        matched_keywords: vec![],
+    };
+    let ranked = RankedBlock {
+        block,
+        bm25_score: 0.0,
+        coverage_boost: 0.0,
+        node_type_boost: 0.0,
+        final_score: 0.0,
+        rank: 2,
+        parent_context: None,
+    };
+    let v = serde_json::to_value(&ranked).unwrap();
+    let obj = v.as_object().unwrap();
+    assert!(!obj.contains_key("matchedLines"));
+    assert!(!obj.contains_key("matchedKeywords"));
+    assert!(obj.contains_key("symbolSignature"));
+    assert_eq!(obj.get("symbolSignature"), Some(&serde_json::Value::Null));
+}
+
