@@ -986,3 +986,84 @@ fn lang_data_variant_set_and_declaration_order_pinned() {
     assert_declaration_order(block, &["Ts", "Rust", "Python", "Go", "Java"]);
 }
 
+#[test]
+fn dependency_target_option_fields_key_present_and_typed_when_none() {
+    let file = DependencyTarget::File { specifier: "x".into(), resolved: None, is_relative: false };
+    let v = serde_json::to_value(&file).unwrap();
+    let obj = v.as_object().unwrap();
+    assert!(obj.contains_key("resolved"));
+    assert_eq!(obj.get("resolved"), Some(&serde_json::Value::Null));
+
+    let rust_path = DependencyTarget::RustPath { segments: vec![], anchor: RustPathAnchor::Crate, resolved: None };
+    let v2 = serde_json::to_value(&rust_path).unwrap();
+    let obj2 = v2.as_object().unwrap();
+    assert!(obj2.contains_key("resolved"));
+    assert_eq!(obj2.get("resolved"), Some(&serde_json::Value::Null));
+
+    let ns = DependencyTarget::Namespace { segments: vec![], is_static: false, alias: None };
+    let v3 = serde_json::to_value(&ns).unwrap();
+    let obj3 = v3.as_object().unwrap();
+    assert!(obj3.contains_key("alias"));
+    assert_eq!(obj3.get("alias"), Some(&serde_json::Value::Null));
+
+    // Compile-time type pins (AC-005): File.resolved and RustPath.resolved are
+    // exactly Option<Utf8PathBuf>, not Option<String> -- both serialize as a
+    // JSON string or null identically either way, so only a compile-time
+    // binding distinguishes them (same technique as field_types_and_derives_pinned
+    // and spec_005_derive_lists_pinned's `usize` pins).
+    if let DependencyTarget::File { resolved, .. } = file {
+        let pinned: Option<camino::Utf8PathBuf> = resolved;
+        assert_eq!(pinned, None);
+    }
+    if let DependencyTarget::RustPath { resolved, .. } = rust_path {
+        let pinned: Option<camino::Utf8PathBuf> = resolved;
+        assert_eq!(pinned, None);
+    }
+}
+
+#[test]
+fn dependency_target_rust_path_anchor_required_field_errors() {
+    let err = serde_json::from_str::<DependencyTarget>(
+        r#"{"kind":"rustPath","segments":["crate","foo"],"resolved":null}"#,
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("missing field `anchor`"));
+}
+
+#[test]
+fn ts_data_unresolved_aliases_populated_full_round_trip() {
+    let data = TsData {
+        jsx_elements: vec![],
+        type_only_imports: vec![],
+        unresolved_aliases: vec!["Foo".to_string(), "Bar".to_string()],
+    };
+    let json = r#"{"jsxElements":[],"typeOnlyImports":[],"unresolvedAliases":["Foo","Bar"]}"#;
+    let s = serde_json::to_string(&data).unwrap();
+    assert_eq!(s, json);
+
+    let round: TsData = serde_json::from_str(json).unwrap();
+    assert_eq!(round.unresolved_aliases, vec!["Foo".to_string(), "Bar".to_string()]);
+
+    // Compile-time type pin (AC-017): unresolved_aliases is exactly
+    // Vec<String>, not e.g. Vec<Utf8PathBuf> -- both serialize identically as
+    // a JSON array of strings, so only a compile-time binding distinguishes
+    // them.
+    let pinned: Vec<String> = round.unresolved_aliases;
+    assert_eq!(pinned, vec!["Foo".to_string(), "Bar".to_string()]);
+}
+
+#[test]
+fn lang_data_jsx_elements_returns_full_slice_not_truncated() {
+    let entries = vec![
+        JsxElementEntry { name: "div".into(), is_html: true, line: 1, attributes: vec![] },
+        JsxElementEntry { name: "Foo".into(), is_html: false, line: 2, attributes: vec![] },
+        JsxElementEntry { name: "span".into(), is_html: true, line: 3, attributes: vec![] },
+    ];
+    let ts_data = TsData { jsx_elements: entries, type_only_imports: vec![], unresolved_aliases: vec![] };
+    let ts = LangData::Ts(ts_data);
+    assert_eq!(ts.jsx_elements().len(), 3);
+    assert_eq!(ts.jsx_elements()[0].name, "div");
+    assert_eq!(ts.jsx_elements()[1].name, "Foo");
+    assert_eq!(ts.jsx_elements()[2].name, "span");
+}
+
