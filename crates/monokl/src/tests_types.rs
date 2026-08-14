@@ -470,3 +470,24 @@ fn empty_lang_data_structs_serialize_as_empty_object() {
     assert_default::<JavaData>();
 }
 
+use crate::types::TsData;
+
+#[test]
+fn ts_data_default_leniency_and_selective_skip_serializing() {
+    let d = TsData::default();
+    assert_eq!(d.jsx_elements.len(), 0);
+    assert_eq!(d.type_only_imports.len(), 0);
+    assert_eq!(d.unresolved_aliases.len(), 0);
+
+    let empty: TsData = serde_json::from_str("{}").unwrap();
+    assert_eq!(empty.jsx_elements.len(), 0);
+    assert_eq!(empty.type_only_imports.len(), 0);
+    assert_eq!(empty.unresolved_aliases.len(), 0);
+
+    let v = serde_json::to_value(&empty).unwrap();
+    let obj = v.as_object().unwrap();
+    assert!(obj.contains_key("jsxElements"));
+    assert!(obj.contains_key("typeOnlyImports"));
+    assert!(!obj.contains_key("unresolvedAliases"));
+}
+
