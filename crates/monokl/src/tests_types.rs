@@ -1893,3 +1893,42 @@ fn language_variant_count_and_order_pinned() {
     assert_eq!(Language::Python as usize, 3);
 }
 
+#[test]
+fn language_camel_case_would_diverge_for_ts_and_js_only() {
+    // AC-008: "lowercase" lowercases every character uniformly with no
+    // word-boundary handling, unlike "camelCase" which lowercases only the
+    // leading character. For TypeScript/JavaScript specifically, the two
+    // rules would produce different wire strings; Rust/Python are single
+    // words so both rules agree. This test doesn't apply a real
+    // #[serde(rename_all = "camelCase")] to Language (it doesn't carry
+    // one) -- it fixes the two rules' well-known transform behavior
+    // (lowercase-every-char vs lowercase-leading-char-only) against the
+    // actual "lowercase" output already pinned above, and against literal
+    // strings for what "camelCase" would have produced.
+    let actual_ts = serde_json::to_string(&Language::TypeScript).unwrap();
+    let actual_js = serde_json::to_string(&Language::JavaScript).unwrap();
+    assert_eq!(actual_ts, "\"typescript\"");
+    assert_eq!(actual_js, "\"javascript\"");
+    let hypothetical_camel_case_ts = "typeScript";
+    let hypothetical_camel_case_js = "javaScript";
+    assert_ne!(actual_ts, format!("\"{hypothetical_camel_case_ts}\""));
+    assert_ne!(actual_js, format!("\"{hypothetical_camel_case_js}\""));
+
+    let actual_rust = serde_json::to_string(&Language::Rust).unwrap();
+    let actual_python = serde_json::to_string(&Language::Python).unwrap();
+    assert_eq!(actual_rust, "\"rust\"");
+    assert_eq!(actual_python, "\"python\"");
+}
+
+#[test]
+fn language_unknown_variant_errors_including_camel_case_form() {
+    let err = serde_json::from_str::<Language>("\"typeScript\"").unwrap_err();
+    assert!(err.to_string().contains("unknown variant"));
+    assert!(
+        err.to_string().contains("expected one of `typescript`, `javascript`, `rust`, `python`")
+    );
+
+    let err2 = serde_json::from_str::<Language>("\"bogus\"").unwrap_err();
+    assert!(err2.to_string().contains("unknown variant"));
+}
+
