@@ -323,3 +323,28 @@ fn dependency_target_internal_tag_snake_case_fields() {
     assert!(matches!(round, DependencyTarget::File { is_relative: true, .. }));
 }
 
+#[test]
+fn dependency_target_unknown_kind_errors() {
+    let json = r#"{"kind":"bogus","specifier":"x","resolved":null,"is_relative":false}"#;
+    let err = serde_json::from_str::<DependencyTarget>(json).unwrap_err();
+    assert!(err.to_string().contains("unknown variant"));
+}
+
+#[test]
+fn dependency_target_camel_case_field_key_fails_missing_field() {
+    let json = r#"{"kind":"file","specifier":"x","resolved":null,"isRelative":false}"#;
+    let err = serde_json::from_str::<DependencyTarget>(json).unwrap_err();
+    assert!(err.to_string().contains("missing field `is_relative`"));
+}
+
+#[test]
+fn dependency_target_option_fields_lenient_on_missing_key() {
+    let json = r#"{"kind":"file","specifier":"x","is_relative":false}"#;
+    let v: DependencyTarget = serde_json::from_str(json).unwrap();
+    assert!(matches!(v, DependencyTarget::File { resolved: None, .. }));
+
+    let json2 = r#"{"kind":"namespace","segments":[],"is_static":false}"#;
+    let v2: DependencyTarget = serde_json::from_str(json2).unwrap();
+    assert!(matches!(v2, DependencyTarget::Namespace { alias: None, .. }));
+}
+
