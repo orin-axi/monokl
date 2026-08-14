@@ -527,6 +527,7 @@ fn lang_data_unknown_language_tag_errors() {
     let json = r#"{"language":"csharp","data":{}}"#;
     let err = serde_json::from_str::<LangData>(json).unwrap_err();
     assert!(err.to_string().contains("unknown variant"));
+    assert!(err.to_string().contains("expected one of `typescript`, `rust`, `python`, `go`, `java`"));
 }
 
 #[test]
@@ -622,6 +623,7 @@ fn binding_kind_external_tagging_shapes() {
 fn rust_path_anchor_unknown_variant_and_second_key_rejected() {
     let err = serde_json::from_str::<RustPathAnchor>(r#""bogus""#).unwrap_err();
     assert!(err.to_string().contains("unknown variant"));
+    assert!(err.to_string().contains("expected one of `crate`, `super`, `self`, `extern`"));
 
     let err2 = serde_json::from_str::<RustPathAnchor>(r#"{"extern":"foo","bogusKey":123}"#).unwrap_err();
     assert!(err2.to_string().contains("expected value"));
@@ -763,5 +765,131 @@ fn dependency_target_namespace_full_round_trip_exact_shape() {
 
     let reserialized = serde_json::to_string(&target).unwrap();
     assert_eq!(reserialized, json);
+}
+
+#[test]
+fn spec_005_derive_lists_pinned() {
+    fn assert_copy_eq_derives<T: std::fmt::Debug + Clone + Copy + PartialEq + Eq>() {}
+    fn assert_clone_derives<T: std::fmt::Debug + Clone>() {}
+    fn assert_clone_default_derives<T: std::fmt::Debug + Clone + Default>() {}
+
+    // AC-003: BindingKind is a fieldless enum -- Copy/PartialEq/Eq required,
+    // matching SymbolKind's and Visibility's pattern.
+    assert_copy_eq_derives::<BindingKind>();
+
+    // AC-008, AC-005, AC-002, AC-001, AC-009, AC-010, AC-011, AC-012: none of
+    // these carry Copy/PartialEq/Eq. A generic bound check can only prove a
+    // trait IS implemented, not that it is absent, so this pins Debug+Clone
+    // only -- it does not (and cannot, on stable Rust) prove the absence of
+    // Copy/PartialEq/Eq on any of these types. In particular, AC-002 states
+    // DependencyBinding must NOT derive PartialEq/Eq/Copy; that specific
+    // absence is not covered by this check and would need a different
+    // technique to pin.
+    assert_clone_derives::<RustPathAnchor>();
+    assert_clone_derives::<DependencyTarget>();
+    assert_clone_derives::<DependencyBinding>();
+    assert_clone_derives::<DependencyRecord>();
+    assert_clone_derives::<ExportRecord>();
+    assert_clone_derives::<JsxAttribute>();
+    assert_clone_derives::<JsxElementEntry>();
+    assert_clone_derives::<LangData>();
+
+    // AC-017, AC-018: TsData and the four empty per-language data structs
+    // additionally derive Default.
+    assert_clone_default_derives::<TsData>();
+    assert_clone_default_derives::<RustData>();
+    assert_clone_default_derives::<PythonData>();
+    assert_clone_default_derives::<GoData>();
+    assert_clone_default_derives::<JavaData>();
+}
+
+fn enum_declaration_block<'a>(src: &'a str, decl: &str) -> &'a str {
+    let start = src.find(decl).unwrap_or_else(|| panic!("declaration `{decl}` not found in types.rs"));
+    let open = src[start..].find('{').unwrap_or_else(|| panic!("no opening brace found for `{decl}`")) + start;
+    let mut depth = 0usize;
+    for (i, ch) in src[open..].char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return &src[open..=open + i];
+                }
+            }
+            _ => {}
+        }
+    }
+    panic!("no matching closing brace found for `{decl}`");
+}
+
+/// `as usize` discriminant casts (used elsewhere in this file to pin
+/// declaration order for the fieldless SymbolKind/Visibility/BindingKind
+/// enums) only apply to C-like enums with no data-carrying variants --
+/// RustPathAnchor, DependencyTarget, and LangData all have at least one
+/// variant that carries data, so that technique doesn't apply to them.
+/// Declaration order is instead pinned by checking that each variant name
+/// appears at a strictly increasing text position within the enum's own
+/// source declaration block, read directly from types.rs via `include_str!`.
+fn assert_declaration_order(block: &str, variants_in_order: &[&str]) {
+    let mut last_end = 0usize;
+    for name in variants_in_order {
+        let found = block[last_end..].find(name).unwrap_or_else(|| {
+            panic!("variant `{name}` not found after position {last_end} -- out of declaration order or missing")
+        });
+        last_end += found + name.len();
+    }
+}
+
+#[test]
+fn rust_path_anchor_variant_set_and_declaration_order_pinned() {
+    // Exhaustive match with no wildcard arm: adding, removing, or renaming a
+    // variant is a compile error, pinning the variant SET.
+    fn assert_shape(v: RustPathAnchor) {
+        match v {
+            RustPathAnchor::Crate => {}
+            RustPathAnchor::Super => {}
+            RustPathAnchor::Selff => {}
+            RustPathAnchor::Extern(_) => {}
+        }
+    }
+    assert_shape(RustPathAnchor::Crate);
+
+    let src = include_str!("types.rs");
+    let block = enum_declaration_block(src, "pub enum RustPathAnchor");
+    assert_declaration_order(block, &["Crate", "Super", "Selff", "Extern"]);
+}
+
+#[test]
+fn dependency_target_variant_set_and_declaration_order_pinned() {
+    fn assert_shape(v: DependencyTarget) {
+        match v {
+            DependencyTarget::File { .. } => {}
+            DependencyTarget::RustPath { .. } => {}
+            DependencyTarget::Namespace { .. } => {}
+        }
+    }
+    assert_shape(DependencyTarget::Namespace { segments: vec![], is_static: false, alias: None });
+
+    let src = include_str!("types.rs");
+    let block = enum_declaration_block(src, "pub enum DependencyTarget");
+    assert_declaration_order(block, &["File", "RustPath", "Namespace"]);
+}
+
+#[test]
+fn lang_data_variant_set_and_declaration_order_pinned() {
+    fn assert_shape(v: LangData) {
+        match v {
+            LangData::Ts(_) => {}
+            LangData::Rust(_) => {}
+            LangData::Python(_) => {}
+            LangData::Go(_) => {}
+            LangData::Java(_) => {}
+        }
+    }
+    assert_shape(LangData::Rust(RustData {}));
+
+    let src = include_str!("types.rs");
+    let block = enum_declaration_block(src, "pub enum LangData");
+    assert_declaration_order(block, &["Ts", "Rust", "Python", "Go", "Java"]);
 }
 
