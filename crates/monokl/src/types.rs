@@ -384,3 +384,33 @@ pub struct ParentContext {
     pub line: usize,
 }
 
+/// A `CodeBlock` after ranking-pipeline scoring (AC-005, AC-006, AC-007,
+/// AC-008). Derives `Debug`, `Clone`, `Serialize` only -- no
+/// `Deserialize`, no `Copy`/`PartialEq`/`Eq`: this type can never be
+/// parsed from JSON. Exactly 7 fields in this declaration order. `block:
+/// CodeBlock` carries `#[serde(flatten)]`, merging CodeBlock's own JSON
+/// keys directly into this struct's serialized object, with no
+/// "block" wrapper key. None of this struct's own 6 field names
+/// collides with any of CodeBlock's 8 field names (verified in
+/// tests_types.rs). Flatten does not alter CodeBlock's own field-level
+/// serialize behavior. The four f64 scoring fields (bm25_score,
+/// coverage_boost, node_type_boost, final_score) carry no field-level
+/// attribute and are always present; serde_json serializes a non-finite
+/// f64 (NAN, INFINITY, NEG_INFINITY) as JSON null rather than failing.
+/// `parent_context` carries no field-level attribute -- `#[serde(flatten)]`
+/// on `block` is the sole field-level attribute anywhere on this struct --
+/// so a None here still emits its "parentContext" key with a JSON null
+/// value.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RankedBlock {
+    #[serde(flatten)]
+    pub block: CodeBlock,
+    pub bm25_score: f64,
+    pub coverage_boost: f64,
+    pub node_type_boost: f64,
+    pub final_score: f64,
+    pub rank: usize,
+    pub parent_context: Option<ParentContext>,
+}
+
