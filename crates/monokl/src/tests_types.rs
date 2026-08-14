@@ -3099,3 +3099,13 @@ fn extract_request_line_start_and_line_end_wrong_type_errors() {
         assert!(err.to_string().contains(expected_snippet), "json={bad_json} err={err}");
     }
 }
+#[test]
+fn extract_request_field_level_attribute_absence_pinned_via_source_inspection() {
+    // AC-007: no field carries any field-level serde attribute -- reuses the
+    // structural source-inspection technique established in SPEC-007's fix
+    // round 3 (assert_no_field_level_serde_attribute), which catches ANY
+    // field-level attribute, not just one specific type.
+    let src = include_str!("types.rs");
+    let block = enum_declaration_block(src, "pub struct ExtractRequest");
+    assert_no_field_level_serde_attribute(block, &["file", "line_start", "line_end"]);
+}
