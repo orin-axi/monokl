@@ -1294,3 +1294,50 @@ fn spec_005_all_field_types_pinned() {
     }
 }
 
+use crate::types::CodeBlock;
+
+#[test]
+fn code_block_symbol_signature_null_present_and_matched_vecs_skip_when_empty() {
+    let block = CodeBlock {
+        file: "src/foo.rs".into(),
+        line_start: 1,
+        line_end: 5,
+        node_kind: SymbolKind::Function,
+        code: "fn foo() {}".into(),
+        symbol_signature: None,
+        matched_lines: vec![],
+        matched_keywords: vec![],
+    };
+    let v = serde_json::to_value(&block).unwrap();
+    let obj = v.as_object().unwrap();
+    assert!(obj.contains_key("symbolSignature"));
+    assert_eq!(obj.get("symbolSignature"), Some(&serde_json::Value::Null));
+    assert!(!obj.contains_key("matchedLines"));
+    assert!(!obj.contains_key("matchedKeywords"));
+
+    let json = r#"{"file":"src/foo.rs","lineStart":1,"lineEnd":5,"nodeKind":"function","code":"fn foo() {}"}"#;
+    let parsed: CodeBlock = serde_json::from_str(json).unwrap();
+    assert_eq!(parsed.symbol_signature, None);
+    assert_eq!(parsed.matched_lines.len(), 0);
+    assert_eq!(parsed.matched_keywords.len(), 0);
+
+    let populated = CodeBlock {
+        file: "src/bar.rs".into(),
+        line_start: 2,
+        line_end: 9,
+        node_kind: SymbolKind::Struct,
+        code: "struct Bar;".into(),
+        symbol_signature: Some("struct Bar".into()),
+        matched_lines: vec![2, 3],
+        matched_keywords: vec!["Bar".into()],
+    };
+    let v2 = serde_json::to_value(&populated).unwrap();
+    let obj2 = v2.as_object().unwrap();
+    assert!(obj2.contains_key("matchedLines"));
+    assert!(obj2.contains_key("matchedKeywords"));
+
+    let expected = r#"{"file":"src/bar.rs","lineStart":2,"lineEnd":9,"nodeKind":"struct","code":"struct Bar;","symbolSignature":"struct Bar","matchedLines":[2,3],"matchedKeywords":["Bar"]}"#;
+    let reserialized = serde_json::to_string(&populated).unwrap();
+    assert_eq!(reserialized, expected);
+}
+
