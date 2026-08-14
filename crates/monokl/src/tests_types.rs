@@ -2964,3 +2964,24 @@ fn extract_request_full_round_trip_exact_shape_pins_declaration_order() {
     let reserialized = serde_json::to_string(&req).unwrap();
     assert_eq!(reserialized, json);
 }
+#[test]
+fn extract_request_required_file_and_option_leniency() {
+    // AC-008: file is required on deserialize.
+    let err = serde_json::from_str::<ExtractRequest>(r#"{"lineStart":1}"#).unwrap_err();
+    assert!(err.to_string().contains("missing field `file`"));
+
+    // Only "file" supplied -- both Option fields default to None.
+    let only_file: ExtractRequest = serde_json::from_str(r#"{"file":"a.ts"}"#).unwrap();
+    assert_eq!(only_file.line_start, None);
+    assert_eq!(only_file.line_end, None);
+
+    // Explicit nulls deserialize identically to omission.
+    let explicit_null: ExtractRequest =
+        serde_json::from_str(r#"{"file":"a.ts","lineStart":null,"lineEnd":null}"#).unwrap();
+    assert_eq!(explicit_null.line_start, None);
+    assert_eq!(explicit_null.line_end, None);
+
+    // No #[serde(deny_unknown_fields)]: an extra key is silently discarded.
+    let extra: ExtractRequest = serde_json::from_str(r#"{"file":"a.ts","bogusKey":123}"#).unwrap();
+    assert_eq!(extra.file.as_str(), "a.ts");
+}
