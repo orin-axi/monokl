@@ -3109,3 +3109,95 @@ fn extract_request_field_level_attribute_absence_pinned_via_source_inspection() 
     let block = enum_declaration_block(src, "pub struct ExtractRequest");
     assert_no_field_level_serde_attribute(block, &["file", "line_start", "line_end"]);
 }
+/// Exhaustive compile-time field-type and derive-list pinning for all three
+/// SPEC-008 types, mirroring `spec_005_all_field_types_pinned` /
+/// `spec_006_all_field_types_and_derives_pinned` /
+/// `spec_007_all_field_types_and_derives_pinned`'s rationale: serde treats
+/// several distinct Rust types identically on the wire, so only a
+/// compile-time `let x: ExactType = value.field` binding -- not a runtime
+/// assertion -- can distinguish the declared type from a serde-equivalent
+/// sibling. This is a self-contained inventory, deliberately not
+/// deduplicated against earlier per-type tests in this file:
+///
+/// - TsconfigMode: fieldless Auto/Skip; Manual(Utf8PathBuf) payload pinned
+///   below.
+/// - WorkspaceOptions: root: Utf8PathBuf, tsconfig: TsconfigMode -- both
+///   pinned below.
+/// - ExtractRequest: file: Utf8PathBuf, line_start: Option<usize>,
+///   line_end: Option<usize> -- all 3 pinned below.
+///
+/// Derive-list note: the bound-check functions below only PROVE presence of
+/// Debug+Clone (TsconfigMode/WorkspaceOptions) and
+/// Debug+Clone+Serialize+DeserializeOwned (ExtractRequest) -- a bound-check
+/// function can never prove absence. AC-001's and AC-003's Copy/PartialEq/
+/// Eq absence claims are proven below via CopyProbe/PartialEqProbe/EqProbe
+/// (T-004's const-specialization generalization of SerProbe/DeProbe/
+/// DefaultProbe, which -- unlike a bound-check function -- CAN prove
+/// absence), with SymbolKind as positive control. AC-001's #[non_exhaustive]
+/// absence claim is proven separately, structurally, via
+/// `assert_attr_in_item_attribute_run` (T-010) reused directly against
+/// types.rs source below -- the one genuine exception to the probe
+/// technique, since #[non_exhaustive] has no effect on matching within the
+/// defining crate and so produces no runtime-observable difference for any
+/// probe to detect. Serialize/Deserialize absence (TsconfigMode/
+/// WorkspaceOptions) and Default absence (TsconfigMode) are proven
+/// separately via SerProbe/DeProbe/DefaultProbe in T-003/T-004/T-007.
+#[test]
+fn spec_008_all_field_types_and_derives_pinned() {
+    fn assert_debug_clone_derives<T: std::fmt::Debug + Clone>() {}
+    fn assert_full_derives<T: std::fmt::Debug + Clone + serde::Serialize + serde::de::DeserializeOwned>() {}
+
+    assert_debug_clone_derives::<TsconfigMode>();
+    assert_debug_clone_derives::<WorkspaceOptions>();
+    assert_full_derives::<ExtractRequest>();
+
+    // -- TsconfigMode::Manual(Utf8PathBuf) --
+    match TsconfigMode::Manual(camino::Utf8PathBuf::from("x.json")) {
+        TsconfigMode::Manual(payload) => {
+            let pinned: camino::Utf8PathBuf = payload;
+            assert_eq!(pinned.as_str(), "x.json");
+        }
+        TsconfigMode::Auto | TsconfigMode::Skip => panic!("expected Manual variant"),
+    }
+
+    // -- WorkspaceOptions { root, tsconfig } --
+    let opts = WorkspaceOptions { root: "r".into(), tsconfig: TsconfigMode::Auto };
+    let WorkspaceOptions { root, tsconfig } = opts;
+    let pinned_root: camino::Utf8PathBuf = root;
+    let pinned_tsconfig: TsconfigMode = tsconfig;
+    assert_eq!(pinned_root.as_str(), "r");
+    assert!(matches!(pinned_tsconfig, TsconfigMode::Auto));
+
+    // -- ExtractRequest { file, line_start, line_end } --
+    let req = ExtractRequest { file: "f.ts".into(), line_start: Some(1), line_end: Some(2) };
+    let ExtractRequest { file, line_start, line_end } = req;
+    let pinned_file: camino::Utf8PathBuf = file;
+    let pinned_line_start: Option<usize> = line_start;
+    let pinned_line_end: Option<usize> = line_end;
+    assert_eq!(pinned_file.as_str(), "f.ts");
+    assert_eq!(pinned_line_start, Some(1));
+    assert_eq!(pinned_line_end, Some(2));
+
+    // -- AC-001/AC-003: Copy/PartialEq/Eq absence, via const-specialization
+    // probes (T-004) that -- unlike a bound-check function -- CAN prove
+    // absence. SymbolKind (SPEC-003, derives Copy/PartialEq/Eq) is the
+    // positive control for all three.
+    assert!(CopyProbe::<SymbolKind>::IS);
+    assert!(PartialEqProbe::<SymbolKind>::IS);
+    assert!(EqProbe::<SymbolKind>::IS);
+    assert!(!CopyProbe::<TsconfigMode>::IS);
+    assert!(!PartialEqProbe::<TsconfigMode>::IS);
+    assert!(!EqProbe::<TsconfigMode>::IS);
+    assert!(!CopyProbe::<WorkspaceOptions>::IS);
+    assert!(!PartialEqProbe::<WorkspaceOptions>::IS);
+
+    // -- AC-001: #[non_exhaustive] absence, via structural source
+    // inspection (T-010's helper) -- a probe can't observe this, since
+    // #[non_exhaustive] has no effect on matching within the defining
+    // crate. The attribute-line-only filter avoids a false positive against
+    // TsconfigMode's own doc comment (T-001), which literally contains the
+    // string "#[non_exhaustive]" in prose describing its absence.
+    let src = include_str!("types.rs");
+    assert_attr_in_item_attribute_run(src, "#[non_exhaustive]", "pub enum TsconfigMode", false);
+    assert_attr_in_item_attribute_run(src, "#[non_exhaustive]", "pub struct WorkspaceOptions", false);
+}
