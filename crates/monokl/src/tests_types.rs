@@ -1668,3 +1668,122 @@ fn line_hit_field_types_and_derives_pinned() {
     assert_eq!(pinned_text, "fn foo() {}");
 }
 
+/// Exhaustive compile-time field-type and derive-list pinning for every
+/// SPEC-006 type, mirroring `spec_005_all_field_types_pinned`'s rationale:
+/// serde treats several distinct Rust types identically on the wire
+/// (`String` vs `camino::Utf8PathBuf`, `f64` vs another float width,
+/// `usize` vs another integer width), so only a compile-time `let x:
+/// ExactType = value.field` binding -- not a runtime assertion -- can
+/// distinguish the declared field type from a serde-equivalent sibling.
+/// This test pins every field independently of whatever incidental typed
+/// bindings earlier tests in this file may already exercise (deliberately
+/// not deduplicated against them), so this test alone is a complete,
+/// self-contained inventory:
+///
+/// - CodeBlock: file: Utf8PathBuf, line_start: usize, line_end: usize,
+///   node_kind: SymbolKind, code: String, symbol_signature:
+///   Option<String>, matched_lines: Vec<usize>, matched_keywords:
+///   Vec<String> -- 8 fields, all pinned below.
+/// - ParentContext: kind: SymbolKind, name: String, line: usize -- 3
+///   fields, all pinned below.
+/// - RankedBlock: block: CodeBlock, bm25_score: f64, coverage_boost: f64,
+///   node_type_boost: f64, final_score: f64, rank: usize, parent_context:
+///   Option<ParentContext> -- 7 fields, all pinned below.
+/// - Diagnostic: kind: DiagnosticKind, path: Option<Utf8PathBuf>, message:
+///   String -- 3 fields, all pinned below.
+/// - DiagnosticKind: fieldless (3 variants) -- nothing to pin.
+/// - LineHit: line_number: usize, text: String -- 2 fields, already
+///   pinned in `line_hit_field_types_and_derives_pinned`; not repeated
+///   here since that test is this file's dedicated LineHit coverage.
+#[test]
+fn spec_006_all_field_types_and_derives_pinned() {
+    fn assert_full_derives<T: std::fmt::Debug + Clone + serde::Serialize + serde::de::DeserializeOwned>() {}
+    fn assert_serialize_only_derives<T: std::fmt::Debug + Clone + serde::Serialize>() {}
+    fn assert_enum_derives<T: std::fmt::Debug + Clone + Copy + PartialEq + Eq + serde::Serialize + serde::de::DeserializeOwned>() {}
+
+    assert_full_derives::<CodeBlock>();
+    assert_serialize_only_derives::<ParentContext>();
+    assert_serialize_only_derives::<RankedBlock>();
+    assert_full_derives::<Diagnostic>();
+    assert_enum_derives::<DiagnosticKind>();
+
+    // -- CodeBlock { file, line_start, line_end, node_kind, code,
+    //    symbol_signature, matched_lines, matched_keywords } --
+    let block = CodeBlock {
+        file: "src/foo.rs".into(),
+        line_start: 1,
+        line_end: 5,
+        node_kind: SymbolKind::Function,
+        code: "fn foo() {}".into(),
+        symbol_signature: Some("fn foo()".into()),
+        matched_lines: vec![2],
+        matched_keywords: vec!["foo".into()],
+    };
+    let CodeBlock { file, line_start, line_end, node_kind, code, symbol_signature, matched_lines, matched_keywords } =
+        block.clone();
+    let pinned_file: camino::Utf8PathBuf = file;
+    let pinned_line_start: usize = line_start;
+    let pinned_line_end: usize = line_end;
+    let pinned_node_kind: SymbolKind = node_kind;
+    let pinned_code: String = code;
+    let pinned_symbol_signature: Option<String> = symbol_signature;
+    let pinned_matched_lines: Vec<usize> = matched_lines;
+    let pinned_matched_keywords: Vec<String> = matched_keywords;
+    assert_eq!(pinned_file.as_str(), "src/foo.rs");
+    assert_eq!(pinned_line_start, 1);
+    assert_eq!(pinned_line_end, 5);
+    assert!(matches!(pinned_node_kind, SymbolKind::Function));
+    assert_eq!(pinned_code, "fn foo() {}");
+    assert_eq!(pinned_symbol_signature, Some("fn foo()".to_string()));
+    assert_eq!(pinned_matched_lines, vec![2]);
+    assert_eq!(pinned_matched_keywords, vec!["foo".to_string()]);
+
+    // -- ParentContext { kind, name, line } --
+    let ctx = ParentContext { kind: SymbolKind::Class, name: "Foo".into(), line: 3 };
+    let ParentContext { kind, name, line } = ctx;
+    let pinned_kind: SymbolKind = kind;
+    let pinned_name: String = name;
+    let pinned_line: usize = line;
+    assert!(matches!(pinned_kind, SymbolKind::Class));
+    assert_eq!(pinned_name, "Foo");
+    assert_eq!(pinned_line, 3);
+
+    // -- RankedBlock { block, bm25_score, coverage_boost, node_type_boost,
+    //    final_score, rank, parent_context } --
+    let ranked = RankedBlock {
+        block: block.clone(),
+        bm25_score: 1.0,
+        coverage_boost: 2.0,
+        node_type_boost: 3.0,
+        final_score: 4.0,
+        rank: 5,
+        parent_context: Some(ParentContext { kind: SymbolKind::Module, name: "m".into(), line: 1 }),
+    };
+    let RankedBlock { block: inner_block, bm25_score, coverage_boost, node_type_boost, final_score, rank, parent_context } =
+        ranked;
+    let pinned_inner_block: CodeBlock = inner_block;
+    let pinned_bm25_score: f64 = bm25_score;
+    let pinned_coverage_boost: f64 = coverage_boost;
+    let pinned_node_type_boost: f64 = node_type_boost;
+    let pinned_final_score: f64 = final_score;
+    let pinned_rank: usize = rank;
+    let pinned_parent_context: Option<ParentContext> = parent_context;
+    assert_eq!(pinned_inner_block.code, "fn foo() {}");
+    assert_eq!(pinned_bm25_score, 1.0);
+    assert_eq!(pinned_coverage_boost, 2.0);
+    assert_eq!(pinned_node_type_boost, 3.0);
+    assert_eq!(pinned_final_score, 4.0);
+    assert_eq!(pinned_rank, 5);
+    assert!(pinned_parent_context.is_some());
+
+    // -- Diagnostic { kind, path, message } --
+    let diag = Diagnostic { kind: DiagnosticKind::Skipped, path: Some("src/foo.rs".into()), message: "m".into() };
+    let Diagnostic { kind, path, message } = diag;
+    let pinned_diag_kind: DiagnosticKind = kind;
+    let pinned_diag_path: Option<camino::Utf8PathBuf> = path;
+    let pinned_diag_message: String = message;
+    assert!(matches!(pinned_diag_kind, DiagnosticKind::Skipped));
+    assert_eq!(pinned_diag_path.as_ref().map(|p| p.as_str()), Some("src/foo.rs"));
+    assert_eq!(pinned_diag_message, "m");
+}
+
