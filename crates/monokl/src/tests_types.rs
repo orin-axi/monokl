@@ -2326,3 +2326,34 @@ fn symbols_result_serialize_only_no_deserialize() {
     assert!(!DeProbe::<SymbolsResult>::IS);
 }
 
+#[test]
+fn symbols_result_files_deterministic_btreemap_key_order() {
+    let mut files: BTreeMap<camino::Utf8PathBuf, Vec<SymbolEntry>> = BTreeMap::new();
+    files.insert("z/last.ts".into(), vec![]);
+    files.insert("a/first.ts".into(), vec![]);
+    files.insert("m/mid.ts".into(), vec![]);
+    let sym = SymbolsResult { files: files.clone(), total_symbol_count: 0, truncation_marker: None, diagnostics: vec![] };
+
+    // Determinism: re-serializing the identical input always produces the
+    // identical key order (AC-013) -- checked twice, and also checked that
+    // insertion order (z, a, m) does not determine output order.
+    let v1 = serde_json::to_value(&sym).unwrap();
+    let v2 = serde_json::to_value(&SymbolsResult { files, total_symbol_count: 0, truncation_marker: None, diagnostics: vec![] }).unwrap();
+    let keys1: Vec<&String> = v1.get("files").unwrap().as_object().unwrap().keys().collect();
+    let keys2: Vec<&String> = v2.get("files").unwrap().as_object().unwrap().keys().collect();
+    assert_eq!(keys1, keys2);
+    assert_eq!(keys1, vec!["a/first.ts", "m/mid.ts", "z/last.ts"]);
+
+    // files is a JSON object, not an array.
+    assert!(v1.get("files").unwrap().is_object());
+}
+
+#[test]
+fn symbols_result_empty_files_and_diagnostics_still_emit_keys() {
+    let sym = SymbolsResult { files: BTreeMap::new(), total_symbol_count: 0, truncation_marker: None, diagnostics: vec![] };
+    let v = serde_json::to_value(&sym).unwrap();
+    let obj = v.as_object().unwrap();
+    assert_eq!(obj.get("files"), Some(&serde_json::Value::Object(serde_json::Map::new())));
+    assert_eq!(obj.get("diagnostics"), Some(&serde_json::Value::Array(vec![])));
+}
+
