@@ -2357,3 +2357,32 @@ fn symbols_result_empty_files_and_diagnostics_still_emit_keys() {
     assert_eq!(obj.get("diagnostics"), Some(&serde_json::Value::Array(vec![])));
 }
 
+#[test]
+fn symbols_result_total_symbol_count_invariant_mandated_but_not_type_enforced() {
+    // AC-014: docs/spec/01-core-architecture.md:2546 mandates a test
+    // (symbols_total_count_is_accurate) asserting total_symbol_count ==
+    // sum(file.values().map(Vec::len)). Nothing in SymbolsResult's own
+    // declaration enforces this -- files and total_symbol_count are two
+    // independently-populated fields, so a value violating the invariant
+    // is constructible directly (SymbolsResult has no Deserialize impl, so
+    // this can only happen via direct construction, per finding #13's
+    // duplicate-path-collapse scenario, not JSON input).
+    let mut files: BTreeMap<camino::Utf8PathBuf, Vec<SymbolEntry>> = BTreeMap::new();
+    files.insert("a.ts".into(), vec![sample_symbol_entry("only-survivor")]);
+    // finding #13: a duplicate input path causes a later occurrence to
+    // overwrite an earlier one in the files BTreeMap, collapsing two
+    // per-file symbol counts into one map entry, while total_symbol_count
+    // (computed independently, e.g. as if both occurrences' counts were
+    // summed) does not correct for the collapse.
+    let violating = SymbolsResult { files, total_symbol_count: 2, truncation_marker: None, diagnostics: vec![] };
+
+    let actual_sum: usize = violating.files.values().map(Vec::len).sum();
+    assert_ne!(violating.total_symbol_count, actual_sum);
+    assert_eq!(actual_sum, 1);
+    assert_eq!(violating.total_symbol_count, 2);
+
+    // Constructing this violating value did not fail or panic -- no
+    // type-level mechanism rejected it.
+    let _ = serde_json::to_string(&violating).unwrap();
+}
+
