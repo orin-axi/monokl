@@ -3059,3 +3059,23 @@ fn extract_request_swapped_range_and_zero_start_unenforced() {
         serde_json::from_str(r#"{"file":"a.ts","lineStart":0,"lineEnd":10}"#).unwrap();
     assert_eq!(zero_start.line_start, Some(0));
 }
+#[test]
+fn extract_request_file_wrong_type_errors() {
+    // AC-012: camino's own custom Deserialize impl for Utf8PathBuf, not a
+    // generic serde_json string-type mismatch -- "expected a UTF-8 path
+    // string", not "expected a string". serde renders a JSON array as
+    // "sequence" and a JSON object as "map", not "array"/"object". file has
+    // no Option wrapper, so an explicit null is a type-mismatch failure, not
+    // a tolerated missing-equivalent.
+    for (bad_json, expected_snippet) in [
+        (r#"{"file":5}"#, "invalid type: integer `5`, expected a UTF-8 path string"),
+        (r#"{"file":true}"#, "invalid type: boolean `true`, expected a UTF-8 path string"),
+        (r#"{"file":null}"#, "invalid type: null, expected a UTF-8 path string"),
+        (r#"{"file":[]}"#, "invalid type: sequence, expected a UTF-8 path string"),
+        (r#"{"file":{}}"#, "invalid type: map, expected a UTF-8 path string"),
+        (r#"{"file":5.5}"#, "invalid type: floating point `5.5`, expected a UTF-8 path string"),
+    ] {
+        let err = serde_json::from_str::<ExtractRequest>(bad_json).unwrap_err();
+        assert!(err.to_string().contains(expected_snippet), "json={bad_json} err={err}");
+    }
+}
