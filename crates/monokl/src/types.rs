@@ -504,3 +504,31 @@ pub enum Language {
     Python,
 }
 
+/// Search-command resource limits (AC-004, AC-005, AC-006). Exactly 4
+/// fields in this declaration order. No field carries any field-level
+/// serde attribute. Carries a hand-written `impl Default` -- not
+/// `#[derive(Default)]` -- supplying `max_results: Some(50), max_bytes:
+/// 2_097_152, max_tokens: Some(20_000), max_candidates: 1_000`. That
+/// Default impl is completely inert for JSON deserialize: no
+/// container-level or field-level `#[serde(default)]` appears anywhere on
+/// this struct, so `max_bytes`/`max_candidates` are strictly required on
+/// deserialize (missing-field error, not a fallback to the Default impl's
+/// values), while `max_results`/`max_tokens` tolerate a missing or
+/// explicitly-null key purely via `Option<T>`'s own independent
+/// `Deserialize` leniency, defaulting to `None` -- not to `Some(50)` /
+/// `Some(20_000)`, the values `SearchLimits::default()` would supply.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchLimits {
+    pub max_results: Option<usize>,
+    pub max_bytes: usize,
+    pub max_tokens: Option<usize>,
+    pub max_candidates: usize,
+}
+
+impl Default for SearchLimits {
+    fn default() -> Self {
+        Self { max_results: Some(50), max_bytes: 2_097_152, max_tokens: Some(20_000), max_candidates: 1_000 }
+    }
+}
+
