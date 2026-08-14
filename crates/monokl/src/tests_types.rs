@@ -491,3 +491,19 @@ fn ts_data_default_leniency_and_selective_skip_serializing() {
     assert!(!obj.contains_key("unresolvedAliases"));
 }
 
+use crate::types::LangData;
+
+#[test]
+fn lang_data_adjacent_tag_wire_shape() {
+    let ts = LangData::Ts(TsData::default());
+    let v = serde_json::to_value(&ts).unwrap();
+    let obj = v.as_object().unwrap();
+    assert_eq!(obj.get("language"), Some(&serde_json::Value::String("typescript".into())));
+    assert!(obj.contains_key("data"));
+    assert_eq!(obj.len(), 2);
+
+    let json = r#"{"language":"typescript","data":{"jsxElements":[],"typeOnlyImports":[]}}"#;
+    let round: LangData = serde_json::from_str(json).unwrap();
+    assert!(matches!(round, LangData::Ts(_)));
+}
+
