@@ -214,3 +214,18 @@ pub struct ExportRecord {
     pub re_export: bool,
 }
 
+/// A single JSX attribute (AC-010). Exactly 4 fields in this declaration
+/// order. name/is_expression/is_spread are required; string_value carries
+/// no serde attribute at all yet still deserializes leniently to None on a
+/// missing or explicitly-null key (Option<T>'s own implicit leniency), and
+/// serializes its key with a JSON null when None (no skip_serializing_if to
+/// omit it).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JsxAttribute {
+    pub name: String,
+    pub string_value: Option<String>,
+    pub is_expression: bool,
+    pub is_spread: bool,
+}
+
