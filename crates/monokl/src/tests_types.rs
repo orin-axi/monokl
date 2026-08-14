@@ -1643,3 +1643,13 @@ fn diagnostic_full_round_trip_exact_shape_and_field_count() {
     let _: String = message;
 }
 
+#[test]
+fn diagnostic_kind_unknown_value_errors() {
+    let json = r#"{"kind":"bogus","message":"x"}"#;
+    let err = serde_json::from_str::<Diagnostic>(json).unwrap_err();
+    assert!(err.to_string().contains("unknown variant"));
+
+    let err2 = serde_json::from_str::<DiagnosticKind>(r#""Degraded""#).unwrap_err();
+    assert!(err2.to_string().contains("unknown variant"));
+}
+
