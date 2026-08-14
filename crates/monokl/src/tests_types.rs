@@ -2448,3 +2448,46 @@ fn dependents_result_diagnostics_field_shape_matches_finding_1_context() {
     assert_eq!(pinned.len(), 1);
 }
 
+#[test]
+fn spec_007_no_skip_serializing_if_on_any_result_vec_field() {
+    // AC-012: all 6 Vec fields across SearchResponse, SymbolsResult, and
+    // DependentsResult always emit their key even when empty -- a direct,
+    // verifiable contrast to CodeBlock.matched_lines/matched_keywords
+    // (SPEC-006 AC-002), which DO carry skip_serializing_if and omit their
+    // key when empty.
+    let resp = SearchResponse {
+        results: vec![], total_blocks_before_truncation: 0, truncated: false,
+        truncation_marker: None, total_bytes: 0, total_tokens: 0, diagnostics: vec![],
+    };
+    let resp_obj = serde_json::to_value(&resp).unwrap();
+    let resp_obj = resp_obj.as_object().unwrap();
+    assert!(resp_obj.contains_key("results"));
+    assert!(resp_obj.contains_key("diagnostics"));
+
+    let sym = SymbolsResult { files: BTreeMap::new(), total_symbol_count: 0, truncation_marker: None, diagnostics: vec![] };
+    let sym_obj = serde_json::to_value(&sym).unwrap();
+    let sym_obj = sym_obj.as_object().unwrap();
+    assert!(sym_obj.contains_key("diagnostics"));
+
+    let dep = DependentsResult {
+        file: "f".into(), dependents: vec![], imports: vec![], total_dependent_count: 0,
+        total_import_count: 0, truncation_marker: None, diagnostics: vec![],
+    };
+    let dep_obj = serde_json::to_value(&dep).unwrap();
+    let dep_obj = dep_obj.as_object().unwrap();
+    assert!(dep_obj.contains_key("dependents"));
+    assert!(dep_obj.contains_key("imports"));
+    assert!(dep_obj.contains_key("diagnostics"));
+
+    // Contrast: CodeBlock's matched_lines/matched_keywords DO carry
+    // skip_serializing_if and omit their key when empty.
+    let block = CodeBlock {
+        file: "x".into(), line_start: 1, line_end: 2, node_kind: SymbolKind::Function,
+        code: "x".into(), symbol_signature: None, matched_lines: vec![], matched_keywords: vec![],
+    };
+    let block_obj = serde_json::to_value(&block).unwrap();
+    let block_obj = block_obj.as_object().unwrap();
+    assert!(!block_obj.contains_key("matchedLines"));
+    assert!(!block_obj.contains_key("matchedKeywords"));
+}
+
