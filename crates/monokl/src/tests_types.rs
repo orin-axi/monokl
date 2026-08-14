@@ -239,3 +239,22 @@ fn field_types_and_derives_pinned() {
     assert_eq!(line, 7);
 }
 
+use crate::types::BindingKind;
+
+#[test]
+fn binding_kind_camel_case_forms() {
+    let pairs: [(BindingKind, &str); 5] = [
+        (BindingKind::Named, "\"named\""),
+        (BindingKind::Default, "\"default\""),
+        (BindingKind::Namespace, "\"namespace\""),
+        (BindingKind::Glob, "\"glob\""),
+        (BindingKind::NamespaceWide, "\"namespaceWide\""),
+    ];
+    for (variant, expected) in pairs {
+        let s = serde_json::to_string(&variant).unwrap();
+        assert_eq!(s, expected);
+        let round: BindingKind = serde_json::from_str(expected).unwrap();
+        assert_eq!(round, variant);
+    }
+}
+
