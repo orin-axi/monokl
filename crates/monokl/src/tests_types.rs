@@ -2913,3 +2913,41 @@ fn workspace_options_with_tsconfig_mutates_tsconfig_leaves_root_and_chains() {
     assert_eq!(skipped.root.as_str(), "root2");
     assert!(matches!(skipped.tsconfig, TsconfigMode::Skip));
 }
+/// Structural, source-level check of whether a given attribute (e.g.
+/// `#[must_use]`) appears anywhere in a given item's attribute run -- the
+/// contiguous block of `#[...]`-prefixed lines between the nearest
+/// preceding `}` and the item itself -- within a block of source text.
+/// Scans the WHOLE run, not just the single line immediately above the
+/// item: attributes and doc comments are order-independent on a Rust item,
+/// so an attribute placed above the item's own doc comment still applies
+/// and must still be detected. The same include_str! technique
+/// `assert_no_field_level_serde_attribute` established for field-level
+/// serde attributes, generalized here to an item-level attribute whose
+/// violation is otherwise only a compile-time WARNING (or, for
+/// #[non_exhaustive] in T-019, no runtime effect at all), not a
+/// runtime-observable difference, so it cannot be proven any other way.
+fn assert_attr_in_item_attribute_run(block: &str, attr: &str, item_signature: &str, expect_present: bool) {
+    let item_pos = block
+        .find(item_signature)
+        .unwrap_or_else(|| panic!("item signature `{item_signature}` not found"));
+    let run_start = block[..item_pos].rfind('}').map_or(0, |i| i + 1);
+    let has_attr = block[run_start..item_pos]
+        .lines()
+        .map(str::trim)
+        .filter(|l| l.starts_with("#["))
+        .any(|l| l.contains(attr));
+    assert_eq!(
+        has_attr, expect_present,
+        "attribute `{attr}` in the attribute run preceding `{item_signature}`: expected present={expect_present}, found={has_attr}"
+    );
+}
+
+#[test]
+fn workspace_options_must_use_asymmetry_pinned() {
+    // AC-004/AC-005: with_tsconfig carries #[must_use]; new does not -- a
+    // deliberate asymmetry, not a uniform rule across both methods.
+    let src = include_str!("types.rs");
+    let block = enum_declaration_block(src, "impl WorkspaceOptions");
+    assert_attr_in_item_attribute_run(block, "#[must_use]", "pub fn new(", false);
+    assert_attr_in_item_attribute_run(block, "#[must_use]", "pub fn with_tsconfig(", true);
+}
