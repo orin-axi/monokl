@@ -1626,3 +1626,20 @@ fn diagnostic_extra_unknown_key_silently_discarded() {
     assert_eq!(diag.path, None);
 }
 
+#[test]
+fn diagnostic_full_round_trip_exact_shape_and_field_count() {
+    let json = r#"{"kind":"degraded","path":"src/foo.rs","message":"partial results"}"#;
+    let diag: Diagnostic = serde_json::from_str(json).unwrap();
+    assert_eq!(diag.kind, DiagnosticKind::Degraded);
+    assert_eq!(diag.path.as_ref().map(|p| p.as_str()), Some("src/foo.rs"));
+    assert_eq!(diag.message, "partial results");
+
+    let reserialized = serde_json::to_string(&diag).unwrap();
+    assert_eq!(reserialized, json);
+
+    let Diagnostic { kind, path, message } = diag;
+    let _: DiagnosticKind = kind;
+    let _: Option<camino::Utf8PathBuf> = path;
+    let _: String = message;
+}
+
