@@ -1653,3 +1653,18 @@ fn diagnostic_kind_unknown_value_errors() {
     assert!(err2.to_string().contains("unknown variant"));
 }
 
+use crate::types::LineHit;
+
+#[test]
+fn line_hit_field_types_and_derives_pinned() {
+    fn assert_debug_clone_derives<T: std::fmt::Debug + Clone>() {}
+    assert_debug_clone_derives::<LineHit>();
+
+    let hit = LineHit { line_number: 42, text: "fn foo() {}".into() };
+    let LineHit { line_number, text } = hit;
+    let pinned_line_number: usize = line_number;
+    let pinned_text: String = text;
+    assert_eq!(pinned_line_number, 42);
+    assert_eq!(pinned_text, "fn foo() {}");
+}
+
