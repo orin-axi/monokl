@@ -437,3 +437,15 @@ fn jsx_attribute_required_fields_and_string_value_leniency() {
     assert!(err_spread.to_string().contains("missing field `isSpread`"));
 }
 
+use crate::types::JsxElementEntry;
+
+#[test]
+fn jsx_element_entry_attributes_required_no_default_leniency() {
+    let err = serde_json::from_str::<JsxElementEntry>(r#"{"name":"Foo","isHtml":true,"line":1}"#).unwrap_err();
+    assert!(err.to_string().contains("missing field `attributes`"));
+
+    let json = r#"{"name":"Foo","isHtml":true,"line":1,"attributes":[]}"#;
+    let parsed: JsxElementEntry = serde_json::from_str(json).unwrap();
+    assert_eq!(parsed.attributes.len(), 0);
+}
+
