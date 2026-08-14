@@ -283,3 +283,43 @@ fn rust_path_anchor_camel_case_forms() {
     assert!(matches!(round, RustPathAnchor::Extern(ref s) if s == "foo"));
 }
 
+use crate::types::DependencyTarget;
+
+#[test]
+fn dependency_target_internal_tag_snake_case_fields() {
+    let file = DependencyTarget::File {
+        specifier: "./foo".into(),
+        resolved: None,
+        is_relative: true,
+    };
+    let v = serde_json::to_value(&file).unwrap();
+    let obj = v.as_object().unwrap();
+    assert_eq!(obj.get("kind"), Some(&serde_json::Value::String("file".into())));
+    assert!(obj.contains_key("is_relative"));
+    assert!(!obj.contains_key("isRelative"));
+    assert_eq!(obj.get("specifier"), Some(&serde_json::Value::String("./foo".into())));
+
+    let rust_path = DependencyTarget::RustPath {
+        segments: vec!["crate".into(), "foo".into()],
+        anchor: RustPathAnchor::Crate,
+        resolved: None,
+    };
+    let v2 = serde_json::to_value(&rust_path).unwrap();
+    assert_eq!(v2.get("kind"), Some(&serde_json::Value::String("rustPath".into())));
+
+    let ns = DependencyTarget::Namespace {
+        segments: vec!["Foo".into(), "Bar".into()],
+        is_static: true,
+        alias: None,
+    };
+    let v3 = serde_json::to_value(&ns).unwrap();
+    let obj3 = v3.as_object().unwrap();
+    assert_eq!(obj3.get("kind"), Some(&serde_json::Value::String("namespace".into())));
+    assert!(obj3.contains_key("is_static"));
+    assert!(!obj3.contains_key("isStatic"));
+
+    let json = r#"{"kind":"file","specifier":"./foo","resolved":null,"is_relative":true}"#;
+    let round: DependencyTarget = serde_json::from_str(json).unwrap();
+    assert!(matches!(round, DependencyTarget::File { is_relative: true, .. }));
+}
+
