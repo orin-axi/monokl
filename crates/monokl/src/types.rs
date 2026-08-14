@@ -202,3 +202,15 @@ pub struct DependencyRecord {
     pub target: DependencyTarget,
 }
 
+/// A single named export statement (AC-009). Exactly 3 fields in this
+/// declaration order, all required on deserialize -- no field-level
+/// attributes. Under rename_all = "camelCase", re_export's JSON key is
+/// reExport.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportRecord {
+    pub name: String,
+    pub line: usize,
+    pub re_export: bool,
+}
+
