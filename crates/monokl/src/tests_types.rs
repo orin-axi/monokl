@@ -1862,3 +1862,34 @@ fn serde_asymmetric_types_absence_pinned() {
     assert!(DeProbe::<Diagnostic>::IS);
 }
 
+use crate::types::Language;
+
+#[test]
+fn language_lowercase_forms() {
+    let pairs: [(Language, &str); 4] = [
+        (Language::TypeScript, "\"typescript\""),
+        (Language::JavaScript, "\"javascript\""),
+        (Language::Rust, "\"rust\""),
+        (Language::Python, "\"python\""),
+    ];
+    for (variant, expected) in pairs {
+        let s = serde_json::to_string(&variant).unwrap();
+        assert_eq!(s, expected);
+        let round: Language = serde_json::from_str(expected).unwrap();
+        assert_eq!(round, variant);
+    }
+}
+
+#[test]
+fn language_variant_count_and_order_pinned() {
+    let assert_shape = |l: Language| match l {
+        Language::TypeScript | Language::JavaScript | Language::Rust | Language::Python => {}
+    };
+    assert_shape(Language::TypeScript);
+
+    assert_eq!(Language::TypeScript as usize, 0);
+    assert_eq!(Language::JavaScript as usize, 1);
+    assert_eq!(Language::Rust as usize, 2);
+    assert_eq!(Language::Python as usize, 3);
+}
+
