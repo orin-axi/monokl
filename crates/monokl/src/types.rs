@@ -532,3 +532,42 @@ impl Default for SearchLimits {
     }
 }
 
+/// Search-command request options (AC-001, AC-002, AC-003). Exactly 7
+/// fields in this declaration order. No field carries any field-level
+/// serde attribute. Carries a hand-written `impl Default` -- not
+/// `#[derive(Default)]` -- supplying `query: String::new(), path:
+/// Utf8PathBuf::new(), allow_tests: false, no_gitignore: false, limits:
+/// SearchLimits::default(), exact: false, language: None`. That Default
+/// impl is completely inert for JSON deserialize by the same mechanism as
+/// `SearchLimits`: no container-level or field-level `#[serde(default)]`
+/// appears anywhere on this struct, so `query`, `path`, `allow_tests`,
+/// `no_gitignore`, `limits`, and `exact` are strictly required on
+/// deserialize. `language: Option<Language>` is the sole exception, and
+/// only because `Option<T>`'s own `Deserialize` impl independently
+/// tolerates a missing or explicitly-null key.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchOptions {
+    pub query: String,
+    pub path: Utf8PathBuf,
+    pub allow_tests: bool,
+    pub no_gitignore: bool,
+    pub limits: SearchLimits,
+    pub exact: bool,
+    pub language: Option<Language>,
+}
+
+impl Default for SearchOptions {
+    fn default() -> Self {
+        Self {
+            query: String::new(),
+            path: Utf8PathBuf::new(),
+            allow_tests: false,
+            no_gitignore: false,
+            limits: SearchLimits::default(),
+            exact: false,
+            language: None,
+        }
+    }
+}
+
