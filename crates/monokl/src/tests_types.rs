@@ -258,3 +258,28 @@ fn binding_kind_camel_case_forms() {
     }
 }
 
+use crate::types::RustPathAnchor;
+
+#[test]
+fn rust_path_anchor_camel_case_forms() {
+    let crate_json = serde_json::to_string(&RustPathAnchor::Crate).unwrap();
+    assert_eq!(crate_json, "\"crate\"");
+    let round: RustPathAnchor = serde_json::from_str(&crate_json).unwrap();
+    assert!(matches!(round, RustPathAnchor::Crate));
+
+    let super_json = serde_json::to_string(&RustPathAnchor::Super).unwrap();
+    assert_eq!(super_json, "\"super\"");
+    let round: RustPathAnchor = serde_json::from_str(&super_json).unwrap();
+    assert!(matches!(round, RustPathAnchor::Super));
+
+    let self_json = serde_json::to_string(&RustPathAnchor::Selff).unwrap();
+    assert_eq!(self_json, "\"self\"");
+    let round: RustPathAnchor = serde_json::from_str(&self_json).unwrap();
+    assert!(matches!(round, RustPathAnchor::Selff));
+
+    let extern_json = serde_json::to_string(&RustPathAnchor::Extern("foo".into())).unwrap();
+    assert_eq!(extern_json, "{\"extern\":\"foo\"}");
+    let round: RustPathAnchor = serde_json::from_str(&extern_json).unwrap();
+    assert!(matches!(round, RustPathAnchor::Extern(ref s) if s == "foo"));
+}
+
