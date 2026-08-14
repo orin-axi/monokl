@@ -2951,6 +2951,34 @@ fn workspace_options_must_use_asymmetry_pinned() {
     assert_attr_in_item_attribute_run(block, "#[must_use]", "pub fn new(", false);
     assert_attr_in_item_attribute_run(block, "#[must_use]", "pub fn with_tsconfig(", true);
 }
+
+/// AC-004 witness: implements `Into<Utf8PathBuf>` but not `AsRef<str>`, so
+/// it only compiles as an argument to `WorkspaceOptions::new` if `new`'s
+/// parameter bound is genuinely `impl Into<Utf8PathBuf>` -- a narrower bound
+/// of `impl AsRef<str>` would reject this type at the call site with E0277.
+struct OnlyInto;
+impl From<OnlyInto> for camino::Utf8PathBuf {
+    fn from(_: OnlyInto) -> Self {
+        camino::Utf8PathBuf::from("only-into")
+    }
+}
+
+#[test]
+fn workspace_options_new_into_bound_and_with_tsconfig_by_value_receiver_pinned() {
+    // AC-004: root's bound is genuinely `impl Into<Utf8PathBuf>`, not just
+    // `impl AsRef<str>` -- every existing test input (&str, String,
+    // Utf8PathBuf) happens to satisfy both bounds, so OnlyInto (which
+    // satisfies only Into<Utf8PathBuf>) is needed to distinguish them.
+    assert_eq!(WorkspaceOptions::new(OnlyInto).root.as_str(), "only-into");
+
+    // AC-005: with_tsconfig takes self by value (mut self), not &mut self
+    // or &self -- pinned via fn-pointer coercion, which only compiles if
+    // the receiver's exact type is `WorkspaceOptions` (by value).
+    let f: fn(WorkspaceOptions, TsconfigMode) -> WorkspaceOptions = WorkspaceOptions::with_tsconfig;
+    let opts = f(WorkspaceOptions::new("src"), TsconfigMode::Skip);
+    assert_eq!(opts.root.as_str(), "src");
+    assert!(matches!(opts.tsconfig, TsconfigMode::Skip));
+}
 use crate::types::ExtractRequest;
 
 #[test]
