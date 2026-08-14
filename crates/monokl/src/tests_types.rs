@@ -1787,3 +1787,26 @@ fn spec_006_all_field_types_and_derives_pinned() {
     assert_eq!(pinned_diag_message, "m");
 }
 
+struct SerProbe<T>(std::marker::PhantomData<T>);
+trait NotSer { const IS: bool = false; }
+impl<T> NotSer for SerProbe<T> {}
+impl<T: serde::Serialize> SerProbe<T> { const IS: bool = true; }
+
+struct DeProbe<T>(std::marker::PhantomData<T>);
+trait NotDe { const IS: bool = false; }
+impl<T> NotDe for DeProbe<T> {}
+impl<'de, T: serde::de::DeserializeOwned> DeProbe<T> { const IS: bool = true; }
+
+#[test]
+fn serde_asymmetric_types_absence_pinned() {
+    // Negative claims (the actual point of this test):
+    assert!(!SerProbe::<LineHit>::IS);
+    assert!(!DeProbe::<LineHit>::IS);
+    assert!(!DeProbe::<RankedBlock>::IS);
+    assert!(!DeProbe::<ParentContext>::IS);
+    // Positive controls (prove the probe itself isn't just always false):
+    assert!(SerProbe::<RankedBlock>::IS);
+    assert!(DeProbe::<CodeBlock>::IS);
+    assert!(DeProbe::<Diagnostic>::IS);
+}
+
