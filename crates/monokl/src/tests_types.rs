@@ -583,3 +583,47 @@ fn extra_unknown_key_silently_discarded_across_cluster() {
     assert!(matches!(ld, LangData::Rust(_)));
 }
 
+
+#[test]
+fn binding_kind_external_tagging_shapes() {
+    let v: BindingKind = serde_json::from_str(r#""named""#).unwrap();
+    assert!(matches!(v, BindingKind::Named));
+
+    let err = serde_json::from_str::<BindingKind>(r#""bogus""#).unwrap_err();
+    assert!(err.to_string().contains("unknown variant"));
+    assert!(err.to_string().contains("expected one of `named`, `default`, `namespace`, `glob`, `namespaceWide`"));
+
+    let v2: BindingKind = serde_json::from_str(r#"{"named":null}"#).unwrap();
+    assert!(matches!(v2, BindingKind::Named));
+    let v3: BindingKind = serde_json::from_str(r#"{"namespaceWide":null}"#).unwrap();
+    assert!(matches!(v3, BindingKind::NamespaceWide));
+
+    for (bad, want) in [
+        (r#"{"named":true}"#, "invalid type: boolean `true`, expected unit"),
+        (r#"{"named":"x"}"#, "invalid type: string \"x\", expected unit"),
+        (r#"{"named":1}"#, "invalid type: integer `1`, expected unit"),
+        (r#"{"named":{}}"#, "invalid type: map, expected unit"),
+        (r#"{"named":[]}"#, "invalid type: sequence, expected unit"),
+    ] {
+        let e = serde_json::from_str::<BindingKind>(bad).unwrap_err();
+        assert!(e.to_string().contains(want));
+    }
+
+    let err3 = serde_json::from_str::<BindingKind>(r#"{"named":null,"bogusKey":1}"#).unwrap_err();
+    assert!(err3.to_string().contains("expected value"));
+
+    for bad in ["123", "true", "null", r#"["named"]"#] {
+        let e = serde_json::from_str::<BindingKind>(bad).unwrap_err();
+        assert!(e.to_string().contains("expected value"));
+    }
+}
+
+#[test]
+fn rust_path_anchor_unknown_variant_and_second_key_rejected() {
+    let err = serde_json::from_str::<RustPathAnchor>(r#""bogus""#).unwrap_err();
+    assert!(err.to_string().contains("unknown variant"));
+
+    let err2 = serde_json::from_str::<RustPathAnchor>(r#"{"extern":"foo","bogusKey":123}"#).unwrap_err();
+    assert!(err2.to_string().contains("expected value"));
+}
+
