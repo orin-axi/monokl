@@ -1409,3 +1409,17 @@ fn code_block_negative_integer_fields_error() {
     assert!(err_matched_lines.to_string().contains("invalid value"));
 }
 
+#[test]
+fn code_block_unenforced_invariants_deserialize_successfully() {
+    let json = r#"{"file":"src/foo.rs","lineStart":100,"lineEnd":5,"nodeKind":"function","code":"fn foo() {}"}"#;
+    let block: CodeBlock = serde_json::from_str(json).unwrap();
+    assert_eq!(block.line_start, 100);
+    assert_eq!(block.line_end, 5);
+    assert!(block.line_start > block.line_end);
+
+    let json2 = r#"{"file":"src/foo.rs","lineStart":1,"lineEnd":5,"nodeKind":"function","code":"fn foo() {}","matchedLines":[1,999999]}"#;
+    let block2: CodeBlock = serde_json::from_str(json2).unwrap();
+    assert_eq!(block2.matched_lines, vec![1, 999999]);
+    assert!(block2.matched_lines.iter().any(|&l| l > block2.line_end));
+}
+
