@@ -507,3 +507,18 @@ fn lang_data_adjacent_tag_wire_shape() {
     assert!(matches!(round, LangData::Ts(_)));
 }
 
+#[test]
+fn lang_data_tag_values_necessary_vs_redundant_renames() {
+    let pairs: [(LangData, &str); 5] = [
+        (LangData::Ts(TsData::default()), "typescript"),
+        (LangData::Rust(RustData {}), "rust"),
+        (LangData::Python(PythonData {}), "python"),
+        (LangData::Go(GoData {}), "go"),
+        (LangData::Java(JavaData {}), "java"),
+    ];
+    for (value, expected_tag) in pairs {
+        let v = serde_json::to_value(&value).unwrap();
+        assert_eq!(v.get("language"), Some(&serde_json::Value::String(expected_tag.into())));
+    }
+}
+
