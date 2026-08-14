@@ -666,3 +666,15 @@ impl WorkspaceOptions {
         self
     }
 }
+/// monokl's extract-command request (AC-007, AC-008, AC-009, AC-010,
+/// AC-011, AC-012, AC-013). Exactly 3 fields in this declaration order:
+/// file: Utf8PathBuf, line_start: Option<usize>, line_end: Option<usize>.
+/// Derives Debug, Clone, Serialize, Deserialize only; camelCase. No field
+/// carries any field-level serde attribute.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtractRequest {
+    pub file: Utf8PathBuf,
+    pub line_start: Option<usize>,
+    pub line_end: Option<usize>,
+}
