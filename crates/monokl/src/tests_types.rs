@@ -522,3 +522,24 @@ fn lang_data_tag_values_necessary_vs_redundant_renames() {
     }
 }
 
+#[test]
+fn lang_data_unknown_language_tag_errors() {
+    let json = r#"{"language":"csharp","data":{}}"#;
+    let err = serde_json::from_str::<LangData>(json).unwrap_err();
+    assert!(err.to_string().contains("unknown variant"));
+}
+
+#[test]
+fn lang_data_malformed_data_shape_errors_per_inner_struct() {
+    let json = r#"{"language":"typescript","data":{"jsxElements":"not-an-array"}}"#;
+    let err = serde_json::from_str::<LangData>(json).unwrap_err();
+    assert!(err.to_string().contains("invalid type"));
+}
+
+#[test]
+fn lang_data_extra_key_in_data_silently_discarded() {
+    let json = r#"{"language":"typescript","data":{"jsxElements":[],"typeOnlyImports":[],"bogusKey":123}}"#;
+    let parsed: LangData = serde_json::from_str(json).unwrap();
+    assert!(matches!(parsed, LangData::Ts(_)));
+}
+
