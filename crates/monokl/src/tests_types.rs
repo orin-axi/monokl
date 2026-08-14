@@ -2004,3 +2004,38 @@ fn search_limits_option_fields_default_to_none_not_default_impl_values() {
     assert_eq!(parsed_null.max_tokens, None);
 }
 
+
+#[test]
+fn search_limits_negative_and_out_of_range_field_values_error() {
+    // Class 1: invalid-value (negative, but within i64 range) -- same class
+    // for both required usize fields and the Option<usize>-wrapped fields.
+    for (bad_json, field_snippet) in [
+        (r#"{"maxBytes":-1,"maxCandidates":5}"#, "invalid value: integer `-1`, expected usize"),
+        (r#"{"maxBytes":100,"maxCandidates":-1}"#, "invalid value: integer `-1`, expected usize"),
+        (r#"{"maxResults":-1,"maxBytes":100,"maxCandidates":5}"#, "invalid value: integer `-1`, expected usize"),
+        (r#"{"maxBytes":100,"maxTokens":-1,"maxCandidates":5}"#, "invalid value: integer `-1`, expected usize"),
+    ] {
+        let err = serde_json::from_str::<SearchLimits>(bad_json).unwrap_err();
+        assert!(err.to_string().contains(field_snippet), "json={bad_json} err={err}");
+    }
+
+    // Class 2: invalid-type (fractional or exponent literal, regardless of
+    // whether the value is a whole number).
+    for (bad_json, field_snippet) in [
+        (r#"{"maxBytes":2097152.5,"maxCandidates":5}"#, "invalid type: floating point `2097152.5`, expected usize"),
+        (r#"{"maxBytes":2097152.0,"maxCandidates":5}"#, "invalid type: floating point `2097152.0`, expected usize"),
+        (r#"{"maxBytes":2e6,"maxCandidates":5}"#, "invalid type: floating point `2000000.0`, expected usize"),
+        (
+            r#"{"maxBytes":18446744073709551616,"maxCandidates":5}"#,
+            "invalid type: floating point `1.8446744073709552e+19`, expected usize",
+        ),
+    ] {
+        let err = serde_json::from_str::<SearchLimits>(bad_json).unwrap_err();
+        assert!(err.to_string().contains(field_snippet), "json={bad_json} err={err}");
+    }
+
+    // Class 3: number-out-of-range (magnitude exceeds finite f64), naming
+    // neither usize nor any other type.
+    let err_range = serde_json::from_str::<SearchLimits>(r#"{"maxBytes":1e309,"maxCandidates":5}"#).unwrap_err();
+    assert!(err_range.to_string().contains("number out of range"));
+}
