@@ -607,3 +607,22 @@ pub struct SymbolsResult {
     pub diagnostics: Vec<Diagnostic>,
 }
 
+/// monokl's top-level dependents-command response (AC-015, AC-016).
+/// Derives `Debug`, `Clone`, `Serialize` only -- no `Deserialize`. Exactly
+/// 7 fields in this declaration order. No field carries any field-level
+/// serde attribute. `diagnostics` is the same `Diagnostic`-typed field
+/// documented (docs/spec/07-edge-cases-and-failure-modes.md Part 1 finding
+/// #1) as currently unpopulated in practice -- this track locks only this
+/// type's own shape.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DependentsResult {
+    pub file: Utf8PathBuf,
+    pub dependents: Vec<Utf8PathBuf>,
+    pub imports: Vec<Utf8PathBuf>,
+    pub total_dependent_count: usize,
+    pub total_import_count: usize,
+    pub truncation_marker: Option<String>,
+    pub diagnostics: Vec<Diagnostic>,
+}
+
