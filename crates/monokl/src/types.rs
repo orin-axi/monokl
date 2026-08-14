@@ -647,3 +647,22 @@ pub struct WorkspaceOptions {
     pub root: Utf8PathBuf,
     pub tsconfig: TsconfigMode,
 }
+impl WorkspaceOptions {
+    /// 01-core-architecture.md:619-624. Sets `tsconfig` to
+    /// `TsconfigMode::Auto` unconditionally; the caller cannot influence
+    /// `tsconfig`'s initial value through this constructor -- that requires
+    /// the separate [`with_tsconfig`](Self::with_tsconfig) builder step. This
+    /// constructor carries no must-use marking of its own.
+    pub fn new(root: impl Into<Utf8PathBuf>) -> Self {
+        Self { root: root.into(), tsconfig: TsconfigMode::Auto }
+    }
+
+    /// 01-core-architecture.md:625-629. Consumes the receiver by value, sets
+    /// `tsconfig` to the given mode, leaves `root` untouched, and returns
+    /// `Self` for fluent chaining.
+    #[must_use]
+    pub fn with_tsconfig(mut self, mode: TsconfigMode) -> Self {
+        self.tsconfig = mode;
+        self
+    }
+}
