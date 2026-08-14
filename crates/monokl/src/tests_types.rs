@@ -2102,3 +2102,28 @@ fn search_options_extra_unknown_key_silently_discarded() {
     assert_eq!(parsed.query, "q");
 }
 
+
+#[test]
+fn search_options_language_missing_or_null_deserializes_to_none() {
+    let parsed: SearchOptions = serde_json::from_str(valid_search_options_json()).unwrap();
+    assert_eq!(parsed.language, None);
+
+    let json_null = r#"{"query":"q","path":"src","allowTests":false,"noGitignore":false,"limits":{"maxBytes":100,"maxCandidates":5},"exact":false,"language":null}"#;
+    let parsed2: SearchOptions = serde_json::from_str(json_null).unwrap();
+    assert_eq!(parsed2.language, None);
+}
+
+#[test]
+fn search_options_omission_diverges_from_default_impl_for_limits() {
+    // AC-002/AC-005: JSON-omission of maxResults/maxTokens inside "limits"
+    // yields None, never Some(50)/Some(20_000) -- SearchOptions' own
+    // Default impl (which delegates to SearchLimits::default()) is never
+    // consulted during deserialize.
+    let parsed: SearchOptions = serde_json::from_str(valid_search_options_json()).unwrap();
+    assert_eq!(parsed.limits.max_results, None);
+    assert_eq!(parsed.limits.max_tokens, None);
+    let default_via_rust = SearchOptions::default();
+    assert_ne!(parsed.limits.max_results, default_via_rust.limits.max_results);
+    assert_ne!(parsed.limits.max_tokens, default_via_rust.limits.max_tokens);
+}
+
