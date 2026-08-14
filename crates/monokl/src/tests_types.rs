@@ -2283,3 +2283,21 @@ fn search_response_serialize_only_no_deserialize() {
     assert!(!DeProbe::<SearchResponse>::IS);
 }
 
+#[test]
+fn search_response_empty_vecs_still_emit_key_and_null_truncation_marker() {
+    let resp = SearchResponse {
+        results: vec![],
+        total_blocks_before_truncation: 0,
+        truncated: false,
+        truncation_marker: None,
+        total_bytes: 0,
+        total_tokens: 0,
+        diagnostics: vec![],
+    };
+    let v = serde_json::to_value(&resp).unwrap();
+    let obj = v.as_object().unwrap();
+    assert_eq!(obj.get("results"), Some(&serde_json::Value::Array(vec![])));
+    assert_eq!(obj.get("diagnostics"), Some(&serde_json::Value::Array(vec![])));
+    assert_eq!(obj.get("truncationMarker"), Some(&serde_json::Value::Null));
+}
+
