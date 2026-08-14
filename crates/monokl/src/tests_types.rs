@@ -2073,3 +2073,32 @@ fn valid_search_options_json() -> &'static str {
     r#"{"query":"q","path":"src","allowTests":false,"noGitignore":false,"limits":{"maxBytes":100,"maxCandidates":5},"exact":false}"#
 }
 
+#[test]
+fn search_options_required_fields_missing_errors() {
+    for (key, snippet) in [
+        ("query", "missing field `query`"),
+        ("path", "missing field `path`"),
+        ("allowTests", "missing field `allowTests`"),
+        ("noGitignore", "missing field `noGitignore`"),
+        ("limits", "missing field `limits`"),
+        ("exact", "missing field `exact`"),
+    ] {
+        let v: serde_json::Value = serde_json::from_str(valid_search_options_json()).unwrap();
+        let mut obj = v.as_object().unwrap().clone();
+        obj.remove(key);
+        let json = serde_json::to_string(&obj).unwrap();
+        let err = serde_json::from_str::<SearchOptions>(&json).unwrap_err();
+        assert!(err.to_string().contains(snippet), "key={key} err={err}");
+    }
+}
+
+#[test]
+fn search_options_extra_unknown_key_silently_discarded() {
+    let v: serde_json::Value = serde_json::from_str(valid_search_options_json()).unwrap();
+    let mut obj = v.as_object().unwrap().clone();
+    obj.insert("bogusKey".to_string(), serde_json::Value::from(123));
+    let json = serde_json::to_string(&obj).unwrap();
+    let parsed: SearchOptions = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed.query, "q");
+}
+
