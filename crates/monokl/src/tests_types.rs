@@ -398,3 +398,20 @@ fn dependency_record_bindings_default_and_required_fields() {
     assert!(err_target.to_string().contains("missing field `target`"));
 }
 
+use crate::types::ExportRecord;
+
+#[test]
+fn export_record_required_fields_and_camel_case() {
+    let rec = ExportRecord { name: "foo".into(), line: 3, re_export: true };
+    let s = serde_json::to_string(&rec).unwrap();
+    assert!(s.contains("\"reExport\":true"));
+    assert!(!s.contains("re_export"));
+
+    let err_name = serde_json::from_str::<ExportRecord>(r#"{"line":1,"reExport":false}"#).unwrap_err();
+    assert!(err_name.to_string().contains("missing field `name`"));
+    let err_line = serde_json::from_str::<ExportRecord>(r#"{"name":"foo","reExport":false}"#).unwrap_err();
+    assert!(err_line.to_string().contains("missing field `line`"));
+    let err_re = serde_json::from_str::<ExportRecord>(r#"{"name":"foo","line":1}"#).unwrap_err();
+    assert!(err_re.to_string().contains("missing field `reExport`"));
+}
+
