@@ -1439,3 +1439,49 @@ fn parent_context_serialize_shape() {
     assert_eq!(reserialized, r#"{"kind":"class","name":"Foo","line":3}"#);
 }
 
+use crate::types::RankedBlock;
+
+#[test]
+fn ranked_block_flatten_key_shape_no_collision_and_parent_context_null() {
+    let block = CodeBlock {
+        file: "src/foo.rs".into(),
+        line_start: 1,
+        line_end: 5,
+        node_kind: SymbolKind::Function,
+        code: "fn foo() {}".into(),
+        symbol_signature: Some("fn foo()".into()),
+        matched_lines: vec![2],
+        matched_keywords: vec!["foo".into()],
+    };
+    let ranked = RankedBlock {
+        block,
+        bm25_score: 1.5,
+        coverage_boost: 0.5,
+        node_type_boost: 0.25,
+        final_score: 2.25,
+        rank: 1,
+        parent_context: None,
+    };
+    let v = serde_json::to_value(&ranked).unwrap();
+    let obj = v.as_object().unwrap();
+
+    assert!(!obj.contains_key("block"));
+
+    let code_block_keys: std::collections::BTreeSet<&str> = [
+        "file", "lineStart", "lineEnd", "nodeKind", "code", "symbolSignature", "matchedLines", "matchedKeywords",
+    ]
+    .into_iter()
+    .collect();
+    let ranked_block_keys: std::collections::BTreeSet<&str> =
+        ["bm25Score", "coverageBoost", "nodeTypeBoost", "finalScore", "rank", "parentContext"].into_iter().collect();
+    assert!(code_block_keys.is_disjoint(&ranked_block_keys));
+
+    let actual_keys: std::collections::BTreeSet<&str> = obj.keys().map(String::as_str).collect();
+    let expected_keys: std::collections::BTreeSet<&str> = code_block_keys.union(&ranked_block_keys).copied().collect();
+    assert_eq!(actual_keys, expected_keys);
+    assert_eq!(obj.len(), 14);
+
+    assert!(obj.contains_key("parentContext"));
+    assert_eq!(obj.get("parentContext"), Some(&serde_json::Value::Null));
+}
+
