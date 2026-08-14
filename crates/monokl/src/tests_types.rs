@@ -1617,3 +1617,12 @@ fn diagnostic_required_fields_and_path_leniency() {
     assert_eq!(obj.get("path"), Some(&serde_json::Value::Null));
 }
 
+#[test]
+fn diagnostic_extra_unknown_key_silently_discarded() {
+    let json = r#"{"kind":"warning","path":null,"message":"partial results","extraField":"x"}"#;
+    let diag: Diagnostic = serde_json::from_str(json).unwrap();
+    assert_eq!(diag.kind, DiagnosticKind::Warning);
+    assert_eq!(diag.message, "partial results");
+    assert_eq!(diag.path, None);
+}
+
