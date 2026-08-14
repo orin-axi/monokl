@@ -103,3 +103,25 @@ pub enum BindingKind {
     NamespaceWide,
 }
 
+/// The anchor of a resolved Rust module path (AC-008). No `Copy`/`PartialEq`/
+/// `Eq` (`Extern(String)` carries a payload). `#[non_exhaustive]`. Externally
+/// tagged by default (no `tag`/`content` attribute on this enum) --
+/// `Extern`'s associated `String` is carried as the tagged value's content,
+/// not flattened as a named field. `Crate`/`Super`/`Extern` receive the
+/// default camelCase transform with no override, producing tag values
+/// "crate"/"super"/"extern". `Selff` alone carries an explicit
+/// `#[serde(rename = "self")]` -- functionally necessary, not stylistic:
+/// `self` is a reserved keyword and cannot name an enum variant, so without
+/// this rename the default transform of the identifier `Selff` would
+/// produce "selff", not "self".
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[non_exhaustive]
+pub enum RustPathAnchor {
+    Crate,
+    Super,
+    #[serde(rename = "self")]
+    Selff,
+    Extern(String),
+}
+
