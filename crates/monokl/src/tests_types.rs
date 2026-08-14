@@ -1965,6 +1965,15 @@ fn search_limits_declaration_order_pinned_via_full_round_trip() {
 
     let reserialized = serde_json::to_string(&limits).unwrap();
     assert_eq!(reserialized, json);
+
+    // AC-004: no field carries any field-level serde attribute -- confirmed
+    // here for max_results/max_tokens by proving that skip_serializing_if
+    // is absent, not merely that a Some(_) value round-trips.
+    let none_limits = SearchLimits { max_results: None, max_bytes: 100, max_tokens: None, max_candidates: 5 };
+    let v = serde_json::to_value(&none_limits).unwrap();
+    let obj = v.as_object().unwrap();
+    assert_eq!(obj.get("maxResults"), Some(&serde_json::Value::Null));
+    assert_eq!(obj.get("maxTokens"), Some(&serde_json::Value::Null));
 }
 
 
@@ -2114,6 +2123,13 @@ fn search_options_language_missing_or_null_deserializes_to_none() {
     let json_null = r#"{"query":"q","path":"src","allowTests":false,"noGitignore":false,"limits":{"maxBytes":100,"maxCandidates":5},"exact":false,"language":null}"#;
     let parsed2: SearchOptions = serde_json::from_str(json_null).unwrap();
     assert_eq!(parsed2.language, None);
+
+    // AC-001: no field carries any field-level serde attribute -- confirmed
+    // for language by proving skip_serializing_if is absent on the
+    // serialize direction too, not just that deserialize tolerates None.
+    let v = serde_json::to_value(&parsed2).unwrap();
+    let obj = v.as_object().unwrap();
+    assert_eq!(obj.get("language"), Some(&serde_json::Value::Null));
 }
 
 #[test]
@@ -2358,6 +2374,7 @@ fn symbols_result_empty_files_and_diagnostics_still_emit_keys() {
     let obj = v.as_object().unwrap();
     assert_eq!(obj.get("files"), Some(&serde_json::Value::Object(serde_json::Map::new())));
     assert_eq!(obj.get("diagnostics"), Some(&serde_json::Value::Array(vec![])));
+    assert_eq!(obj.get("truncationMarker"), Some(&serde_json::Value::Null));
 }
 
 #[test]
