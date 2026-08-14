@@ -1381,3 +1381,31 @@ fn code_block_unknown_node_kind_errors() {
     assert!(err.to_string().contains("unknown variant"));
 }
 
+#[test]
+fn code_block_extra_unknown_key_silently_discarded() {
+    let json = r#"{"file":"src/foo.rs","lineStart":1,"lineEnd":5,"nodeKind":"function","code":"fn foo() {}","extraField":"x"}"#;
+    let block: CodeBlock = serde_json::from_str(json).unwrap();
+    assert_eq!(block.file.as_str(), "src/foo.rs");
+}
+
+#[test]
+fn code_block_negative_integer_fields_error() {
+    let err_line_start = serde_json::from_str::<CodeBlock>(
+        r#"{"file":"src/foo.rs","lineStart":-1,"lineEnd":5,"nodeKind":"function","code":"fn foo() {}"}"#,
+    )
+    .unwrap_err();
+    assert!(err_line_start.to_string().contains("invalid value"));
+
+    let err_line_end = serde_json::from_str::<CodeBlock>(
+        r#"{"file":"src/foo.rs","lineStart":1,"lineEnd":-5,"nodeKind":"function","code":"fn foo() {}"}"#,
+    )
+    .unwrap_err();
+    assert!(err_line_end.to_string().contains("invalid value"));
+
+    let err_matched_lines = serde_json::from_str::<CodeBlock>(
+        r#"{"file":"src/foo.rs","lineStart":1,"lineEnd":5,"nodeKind":"function","code":"fn foo() {}","matchedLines":[1,-2]}"#,
+    )
+    .unwrap_err();
+    assert!(err_matched_lines.to_string().contains("invalid value"));
+}
+
