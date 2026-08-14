@@ -335,3 +335,35 @@ impl LangData {
     }
 }
 
+
+/// monokl's per-match result record from the ranking pipeline (AC-001,
+/// AC-002, AC-003, AC-004). Exactly 8 fields in this declaration order.
+/// Derives `Debug`, `Clone`, `Serialize`, `Deserialize` only -- no
+/// `Copy`/`PartialEq`/`Eq`, no `#[non_exhaustive]`. `node_kind: SymbolKind`
+/// references the enum locked in SPEC-003; this track does not re-lock
+/// SymbolKind's own shape. `symbol_signature` carries no field-level
+/// attribute -- its leniency comes from `Option<T>`'s own `Deserialize`
+/// impl, and it always emits a JSON null key when `None`.
+/// `matched_lines`/`matched_keywords` each carry `#[serde(default,
+/// skip_serializing_if = "Vec::is_empty")]`. Neither line_start <=
+/// line_end nor the matched_lines range is enforced by this struct's own
+/// Deserialize impl (AC-004) -- both are structurally possible to
+/// violate. The overlaps_significantly comment
+/// (01-core-architecture.md:1217-1219) already flags this gap in prose
+/// and defends against it internally via saturating_sub rather than a
+/// type-level guarantee.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeBlock {
+    pub file: Utf8PathBuf,
+    pub line_start: usize,
+    pub line_end: usize,
+    pub node_kind: SymbolKind,
+    pub code: String,
+    pub symbol_signature: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub matched_lines: Vec<usize>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub matched_keywords: Vec<String>,
+}
+
