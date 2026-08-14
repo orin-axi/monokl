@@ -590,3 +590,20 @@ pub struct SearchResponse {
     pub diagnostics: Vec<Diagnostic>,
 }
 
+/// monokl's top-level symbols-command response (AC-013, AC-014). Derives
+/// `Debug`, `Clone`, `Serialize` only -- no `Deserialize`. Exactly 4 fields
+/// in this declaration order. No field carries any field-level serde
+/// attribute. `files` is a `BTreeMap`, not a `HashMap`: its keys serialize
+/// in the order induced by `Utf8PathBuf`'s own `Ord` implementation,
+/// deterministic for a given set of file paths on every run and every
+/// machine. `diagnostics` always emits its key as an explicit empty JSON
+/// array even when empty.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SymbolsResult {
+    pub files: std::collections::BTreeMap<Utf8PathBuf, Vec<SymbolEntry>>,
+    pub total_symbol_count: usize,
+    pub truncation_marker: Option<String>,
+    pub diagnostics: Vec<Diagnostic>,
+}
+
