@@ -543,3 +543,24 @@ fn lang_data_extra_key_in_data_silently_discarded() {
     assert!(matches!(parsed, LangData::Ts(_)));
 }
 
+#[test]
+fn lang_data_ts_and_jsx_elements_methods() {
+    let entry = JsxElementEntry { name: "div".into(), is_html: true, line: 1, attributes: vec![] };
+    let ts_data = TsData { jsx_elements: vec![entry.clone()], type_only_imports: vec![], unresolved_aliases: vec![] };
+    let ts = LangData::Ts(ts_data);
+    assert!(ts.ts().is_some());
+    assert_eq!(ts.jsx_elements().len(), 1);
+    assert_eq!(ts.jsx_elements()[0].name, "div");
+
+    let others: [LangData; 4] = [
+        LangData::Rust(RustData {}),
+        LangData::Python(PythonData {}),
+        LangData::Go(GoData {}),
+        LangData::Java(JavaData {}),
+    ];
+    for variant in others {
+        assert!(variant.ts().is_none());
+        assert_eq!(variant.jsx_elements().len(), 0);
+    }
+}
+
