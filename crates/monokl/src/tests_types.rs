@@ -1564,3 +1564,20 @@ fn ranked_block_non_finite_scores_serialize_as_null() {
     }
 }
 
+use crate::types::DiagnosticKind;
+
+#[test]
+fn diagnostic_kind_lowercase_forms() {
+    let pairs: [(DiagnosticKind, &str); 3] = [
+        (DiagnosticKind::Degraded, "\"degraded\""),
+        (DiagnosticKind::Skipped, "\"skipped\""),
+        (DiagnosticKind::Warning, "\"warning\""),
+    ];
+    for (variant, expected) in pairs {
+        let s = serde_json::to_string(&variant).unwrap();
+        assert_eq!(s, expected);
+        let round: DiagnosticKind = serde_json::from_str(expected).unwrap();
+        assert_eq!(round, variant);
+    }
+}
+
