@@ -1593,3 +1593,27 @@ fn diagnostic_kind_variant_count_and_order_pinned() {
     assert_eq!(DiagnosticKind::Warning as usize, 2);
 }
 
+use crate::types::Diagnostic;
+
+#[test]
+fn diagnostic_required_fields_and_path_leniency() {
+    let err_kind = serde_json::from_str::<Diagnostic>(r#"{"message":"partial results"}"#).unwrap_err();
+    assert!(err_kind.to_string().contains("missing field `kind`"));
+
+    let err_message = serde_json::from_str::<Diagnostic>(r#"{"kind":"warning"}"#).unwrap_err();
+    assert!(err_message.to_string().contains("missing field `message`"));
+
+    let json_missing_path = r#"{"kind":"warning","message":"partial results"}"#;
+    let parsed: Diagnostic = serde_json::from_str(json_missing_path).unwrap();
+    assert_eq!(parsed.path, None);
+
+    let json_null_path = r#"{"kind":"warning","path":null,"message":"partial results"}"#;
+    let parsed2: Diagnostic = serde_json::from_str(json_null_path).unwrap();
+    assert_eq!(parsed2.path, None);
+
+    let v = serde_json::to_value(&parsed).unwrap();
+    let obj = v.as_object().unwrap();
+    assert!(obj.contains_key("path"));
+    assert_eq!(obj.get("path"), Some(&serde_json::Value::Null));
+}
+
