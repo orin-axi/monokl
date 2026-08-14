@@ -449,3 +449,24 @@ fn jsx_element_entry_attributes_required_no_default_leniency() {
     assert_eq!(parsed.attributes.len(), 0);
 }
 
+use crate::types::{GoData, JavaData, PythonData, RustData};
+
+#[test]
+fn empty_lang_data_structs_serialize_as_empty_object() {
+    assert_eq!(serde_json::to_string(&RustData {}).unwrap(), "{}");
+    assert_eq!(serde_json::to_string(&PythonData {}).unwrap(), "{}");
+    assert_eq!(serde_json::to_string(&GoData {}).unwrap(), "{}");
+    assert_eq!(serde_json::to_string(&JavaData {}).unwrap(), "{}");
+
+    let _: RustData = serde_json::from_str("{}").unwrap();
+    let _: PythonData = serde_json::from_str("{}").unwrap();
+    let _: GoData = serde_json::from_str("{}").unwrap();
+    let _: JavaData = serde_json::from_str("{}").unwrap();
+
+    fn assert_default<T: Default>() {}
+    assert_default::<RustData>();
+    assert_default::<PythonData>();
+    assert_default::<GoData>();
+    assert_default::<JavaData>();
+}
+
