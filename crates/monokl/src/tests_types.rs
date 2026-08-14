@@ -346,6 +346,26 @@ fn dependency_target_option_fields_lenient_on_missing_key() {
     let json2 = r#"{"kind":"namespace","segments":[],"is_static":false}"#;
     let v2: DependencyTarget = serde_json::from_str(json2).unwrap();
     assert!(matches!(v2, DependencyTarget::Namespace { alias: None, .. }));
+
+    let json3 = r#"{"kind":"rustPath","segments":["crate","foo"],"anchor":"crate"}"#;
+    let v3: DependencyTarget = serde_json::from_str(json3).unwrap();
+    assert!(matches!(v3, DependencyTarget::RustPath { resolved: None, .. }));
+
+    let err_specifier =
+        serde_json::from_str::<DependencyTarget>(r#"{"kind":"file","is_relative":false}"#).unwrap_err();
+    assert!(err_specifier.to_string().contains("missing field `specifier`"));
+
+    let err_rust_path_segments =
+        serde_json::from_str::<DependencyTarget>(r#"{"kind":"rustPath","anchor":"crate"}"#).unwrap_err();
+    assert!(err_rust_path_segments.to_string().contains("missing field `segments`"));
+
+    let err_namespace_segments =
+        serde_json::from_str::<DependencyTarget>(r#"{"kind":"namespace","is_static":false}"#).unwrap_err();
+    assert!(err_namespace_segments.to_string().contains("missing field `segments`"));
+
+    let err_namespace_is_static =
+        serde_json::from_str::<DependencyTarget>(r#"{"kind":"namespace","segments":[]}"#).unwrap_err();
+    assert!(err_namespace_is_static.to_string().contains("missing field `is_static`"));
 }
 
 #[test]
@@ -447,6 +467,18 @@ fn jsx_element_entry_attributes_required_no_default_leniency() {
     let json = r#"{"name":"Foo","isHtml":true,"line":1,"attributes":[]}"#;
     let parsed: JsxElementEntry = serde_json::from_str(json).unwrap();
     assert_eq!(parsed.attributes.len(), 0);
+
+    let err_name =
+        serde_json::from_str::<JsxElementEntry>(r#"{"isHtml":true,"line":1,"attributes":[]}"#).unwrap_err();
+    assert!(err_name.to_string().contains("missing field `name`"));
+
+    let err_is_html =
+        serde_json::from_str::<JsxElementEntry>(r#"{"name":"Foo","line":1,"attributes":[]}"#).unwrap_err();
+    assert!(err_is_html.to_string().contains("missing field `isHtml`"));
+
+    let err_line =
+        serde_json::from_str::<JsxElementEntry>(r#"{"name":"Foo","isHtml":true,"attributes":[]}"#).unwrap_err();
+    assert!(err_line.to_string().contains("missing field `line`"));
 }
 
 use crate::types::{GoData, JavaData, PythonData, RustData};
@@ -786,6 +818,30 @@ fn dependency_target_namespace_full_round_trip_exact_shape() {
 }
 
 #[test]
+fn dependency_record_line_negative_errors() {
+    let json = r#"{"line":-5,"target":{"kind":"file","specifier":"x","resolved":null,"is_relative":false}}"#;
+    let err = serde_json::from_str::<DependencyRecord>(json).unwrap_err();
+    assert!(err.to_string().contains("invalid value"));
+    assert!(err.to_string().contains("usize"));
+}
+
+#[test]
+fn export_record_line_negative_errors() {
+    let json = r#"{"name":"foo","line":-5,"reExport":false}"#;
+    let err = serde_json::from_str::<ExportRecord>(json).unwrap_err();
+    assert!(err.to_string().contains("invalid value"));
+    assert!(err.to_string().contains("usize"));
+}
+
+#[test]
+fn jsx_element_entry_line_negative_errors() {
+    let json = r#"{"name":"Foo","isHtml":true,"line":-5,"attributes":[]}"#;
+    let err = serde_json::from_str::<JsxElementEntry>(json).unwrap_err();
+    assert!(err.to_string().contains("invalid value"));
+    assert!(err.to_string().contains("usize"));
+}
+
+#[test]
 fn spec_005_derive_lists_pinned() {
     fn assert_copy_eq_derives<T: std::fmt::Debug + Clone + Copy + PartialEq + Eq>() {}
     fn assert_clone_derives<T: std::fmt::Debug + Clone>() {}
@@ -819,6 +875,25 @@ fn spec_005_derive_lists_pinned() {
     assert_clone_default_derives::<PythonData>();
     assert_clone_default_derives::<GoData>();
     assert_clone_default_derives::<JavaData>();
+
+    // AC-001, AC-009, AC-011: line:usize pinned exactly (not i64/u32) on
+    // DependencyRecord, ExportRecord, and JsxElementEntry, mirroring
+    // field_types_and_derives_pinned's compile-time binding for
+    // SymbolEntry.line (SPEC-003).
+    let dep_json = r#"{"line":10,"target":{"kind":"file","specifier":"x","resolved":null,"is_relative":false}}"#;
+    let dep: DependencyRecord = serde_json::from_str(dep_json).unwrap();
+    let dep_line: usize = dep.line;
+    assert_eq!(dep_line, 10);
+
+    let export_json = r#"{"name":"foo","line":10,"reExport":false}"#;
+    let export: ExportRecord = serde_json::from_str(export_json).unwrap();
+    let export_line: usize = export.line;
+    assert_eq!(export_line, 10);
+
+    let jsx_json = r#"{"name":"Foo","isHtml":true,"line":10,"attributes":[]}"#;
+    let jsx: JsxElementEntry = serde_json::from_str(jsx_json).unwrap();
+    let jsx_line: usize = jsx.line;
+    assert_eq!(jsx_line, 10);
 }
 
 fn enum_declaration_block<'a>(src: &'a str, decl: &str) -> &'a str {
