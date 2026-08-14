@@ -89,3 +89,17 @@ pub struct SymbolEntry {
     pub kind_detail: Option<String>,
 }
 
+/// The kind of a single import binding within a `DependencyBinding` (AC-003,
+/// AC-004). Exactly 5 variants in this declaration order. `Copy`/`PartialEq`/
+/// `Eq` present (fieldless enum, same pattern as `SymbolKind`/`Visibility`).
+/// No `#[non_exhaustive]`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BindingKind {
+    Named,
+    Default,
+    Namespace,
+    Glob,
+    NamespaceWide,
+}
+
