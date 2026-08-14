@@ -1943,3 +1943,27 @@ fn language_clap_value_enum_names_match_serde_names() {
     }
 }
 
+use crate::types::SearchLimits;
+
+#[test]
+fn search_limits_default_impl_values() {
+    let d = SearchLimits::default();
+    assert_eq!(d.max_results, Some(50));
+    assert_eq!(d.max_bytes, 2_097_152);
+    assert_eq!(d.max_tokens, Some(20_000));
+    assert_eq!(d.max_candidates, 1_000);
+}
+
+#[test]
+fn search_limits_declaration_order_pinned_via_full_round_trip() {
+    let json = r#"{"maxResults":10,"maxBytes":100,"maxTokens":200,"maxCandidates":5}"#;
+    let limits: SearchLimits = serde_json::from_str(json).unwrap();
+    assert_eq!(limits.max_results, Some(10));
+    assert_eq!(limits.max_bytes, 100);
+    assert_eq!(limits.max_tokens, Some(200));
+    assert_eq!(limits.max_candidates, 5);
+
+    let reserialized = serde_json::to_string(&limits).unwrap();
+    assert_eq!(reserialized, json);
+}
+
