@@ -2776,3 +2776,24 @@ fn spec_007_field_level_attribute_absence_pinned_via_source_inspection() {
     );
 }
 
+use crate::types::TsconfigMode;
+
+#[test]
+fn tsconfig_mode_variant_set_and_declaration_order_pinned() {
+    // Exhaustive match with no wildcard arm: adding, removing, or renaming a
+    // variant is a compile error, pinning the variant SET.
+    fn assert_shape(v: TsconfigMode) {
+        match v {
+            TsconfigMode::Auto => {}
+            TsconfigMode::Manual(_) => {}
+            TsconfigMode::Skip => {}
+        }
+    }
+    assert_shape(TsconfigMode::Auto);
+
+    // Manual carries data, so `as usize` discriminant casts don't apply --
+    // same technique as RustPathAnchor/DependencyTarget/LangData.
+    let src = include_str!("types.rs");
+    let block = enum_declaration_block(src, "pub enum TsconfigMode");
+    assert_declaration_order(block, &["Auto", "Manual", "Skip"]);
+}
