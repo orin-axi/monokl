@@ -2127,3 +2127,47 @@ fn search_options_omission_diverges_from_default_impl_for_limits() {
     assert_ne!(parsed.limits.max_tokens, default_via_rust.limits.max_tokens);
 }
 
+fn search_options_with_limits_json(limits_json_value: &str) -> String {
+    format!(
+        r#"{{"query":"q","path":"src","allowTests":false,"noGitignore":false,"limits":{limits_json_value},"exact":false}}"#
+    )
+}
+
+#[test]
+fn search_options_limits_whole_value_type_mismatches() {
+    // AC-003 WHOLE-VALUE TYPE-MISMATCH CONTRACT: every non-object,
+    // non-array JSON value for "limits" fails with "invalid type: <found>,
+    // expected struct SearchLimits", except a magnitude-out-of-range number
+    // literal, which fails at parse time with "number out of range"
+    // instead (no "expected struct SearchLimits" text).
+    for (limits_value, expected_snippet) in [
+        (r#""default""#, "invalid type: string \"default\", expected struct SearchLimits"),
+        ("50", "invalid type: integer `50`, expected struct SearchLimits"),
+        ("18446744073709551615", "invalid type: integer `18446744073709551615`, expected struct SearchLimits"),
+        ("1.5", "invalid type: floating point `1.5`, expected struct SearchLimits"),
+        ("5e2", "invalid type: floating point `500.0`, expected struct SearchLimits"),
+        ("50.0", "invalid type: floating point `50.0`, expected struct SearchLimits"),
+        (
+            "18446744073709551616",
+            "invalid type: floating point `1.8446744073709552e+19`, expected struct SearchLimits",
+        ),
+        (
+            "-9223372036854775809",
+            "invalid type: floating point `-9.223372036854776e+18`, expected struct SearchLimits",
+        ),
+        ("true", "invalid type: boolean `true`, expected struct SearchLimits"),
+        ("null", "invalid type: null, expected struct SearchLimits"),
+    ] {
+        let json = search_options_with_limits_json(limits_value);
+        let err = serde_json::from_str::<SearchOptions>(&json).unwrap_err();
+        assert!(err.to_string().contains(expected_snippet), "limits={limits_value} err={err}");
+    }
+
+    // The one exception: magnitude exceeds finite f64 range entirely --
+    // fails at parse time, naming no type at all.
+    let json = search_options_with_limits_json("1e309");
+    let err = serde_json::from_str::<SearchOptions>(&json).unwrap_err();
+    assert!(err.to_string().contains("number out of range"));
+    assert!(!err.to_string().contains("expected struct SearchLimits"));
+}
+
