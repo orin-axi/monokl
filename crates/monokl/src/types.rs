@@ -243,3 +243,27 @@ pub struct JsxElementEntry {
     pub attributes: Vec<JsxAttribute>,
 }
 
+/// Empty per-language placeholder (AC-018) -- populated once the Rust
+/// analyzer lands.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RustData {}
+
+/// Empty per-language placeholder (AC-018) -- populated once the Python
+/// analyzer lands.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PythonData {}
+
+/// Empty per-language placeholder (AC-018, AC-015) -- replaces the dropped
+/// CSharp variant; populated once the Go analyzer lands.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GoData {}
+
+/// Empty per-language placeholder (AC-018, AC-015) -- replaces the dropped
+/// CSharp variant; populated once the Java analyzer lands.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JavaData {}
+
