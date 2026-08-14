@@ -415,3 +415,25 @@ fn export_record_required_fields_and_camel_case() {
     assert!(err_re.to_string().contains("missing field `reExport`"));
 }
 
+use crate::types::JsxAttribute;
+
+#[test]
+fn jsx_attribute_required_fields_and_string_value_leniency() {
+    let attr = JsxAttribute { name: "foo".into(), string_value: None, is_expression: false, is_spread: false };
+    let v = serde_json::to_value(&attr).unwrap();
+    let obj = v.as_object().unwrap();
+    assert!(obj.contains_key("stringValue"));
+    assert_eq!(obj.get("stringValue"), Some(&serde_json::Value::Null));
+
+    let json = r#"{"name":"foo","isExpression":false,"isSpread":false}"#;
+    let parsed: JsxAttribute = serde_json::from_str(json).unwrap();
+    assert_eq!(parsed.string_value, None);
+
+    let err_name = serde_json::from_str::<JsxAttribute>(r#"{"isExpression":false,"isSpread":false}"#).unwrap_err();
+    assert!(err_name.to_string().contains("missing field `name`"));
+    let err_expr = serde_json::from_str::<JsxAttribute>(r#"{"name":"foo","isSpread":false}"#).unwrap_err();
+    assert!(err_expr.to_string().contains("missing field `isExpression`"));
+    let err_spread = serde_json::from_str::<JsxAttribute>(r#"{"name":"foo","isExpression":false}"#).unwrap_err();
+    assert!(err_spread.to_string().contains("missing field `isSpread`"));
+}
+
