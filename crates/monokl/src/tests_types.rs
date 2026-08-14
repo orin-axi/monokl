@@ -620,6 +620,24 @@ fn binding_kind_external_tagging_shapes() {
 }
 
 #[test]
+fn binding_kind_variant_count_and_order_pinned() {
+    let assert_shape = |k: BindingKind| match k {
+        BindingKind::Named
+        | BindingKind::Default
+        | BindingKind::Namespace
+        | BindingKind::Glob
+        | BindingKind::NamespaceWide => {}
+    };
+    assert_shape(BindingKind::Named);
+
+    assert_eq!(BindingKind::Named as usize, 0);
+    assert_eq!(BindingKind::Default as usize, 1);
+    assert_eq!(BindingKind::Namespace as usize, 2);
+    assert_eq!(BindingKind::Glob as usize, 3);
+    assert_eq!(BindingKind::NamespaceWide as usize, 4);
+}
+
+#[test]
 fn rust_path_anchor_unknown_variant_and_second_key_rejected() {
     let err = serde_json::from_str::<RustPathAnchor>(r#""bogus""#).unwrap_err();
     assert!(err.to_string().contains("unknown variant"));
