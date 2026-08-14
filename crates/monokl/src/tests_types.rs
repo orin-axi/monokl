@@ -2797,3 +2797,20 @@ fn tsconfig_mode_variant_set_and_declaration_order_pinned() {
     let block = enum_declaration_block(src, "pub enum TsconfigMode");
     assert_declaration_order(block, &["Auto", "Manual", "Skip"]);
 }
+#[test]
+fn tsconfig_mode_no_serde_and_manual_payload_type_pinned() {
+    // AC-002: no Serialize/Deserialize of any kind, at the enum level,
+    // regardless of which variant carries data.
+    assert!(!SerProbe::<TsconfigMode>::IS);
+    assert!(!DeProbe::<TsconfigMode>::IS);
+    // Positive control (proves the probe itself isn't just always false).
+    assert!(DeProbe::<CodeBlock>::IS);
+
+    match TsconfigMode::Manual(camino::Utf8PathBuf::from("tsconfig.json")) {
+        TsconfigMode::Manual(payload) => {
+            let pinned: camino::Utf8PathBuf = payload;
+            assert_eq!(pinned.as_str(), "tsconfig.json");
+        }
+        TsconfigMode::Auto | TsconfigMode::Skip => panic!("expected Manual variant"),
+    }
+}
