@@ -4,6 +4,7 @@
 //! and `SymbolEntry` are the canonical, locked shapes of monokl's
 //! symbol-classification and per-symbol output types, verbatim per
 //! `docs/spec/01-core-architecture.md:263-310`.
+use camino::Utf8PathBuf;
 use serde::{Deserialize, Serialize};
 
 /// monokl's universal symbol-classification enum (AC-001, AC-002). 12
@@ -123,5 +124,49 @@ pub enum RustPathAnchor {
     #[serde(rename = "self")]
     Selff,
     Extern(String),
+}
+
+/// The resolved target of a dependency statement (AC-005, AC-006, AC-007).
+/// Internally tagged (`tag = "kind"`): each variant's own fields flatten
+/// directly into the same JSON object as the "kind" tag key, not nested
+/// under a separate variant-name key. The enum-level
+/// `#[serde(rename_all = "camelCase")]` renames only the 3 variant tag
+/// values (File->"file", RustPath->"rustPath", Namespace->"namespace") --
+/// it does NOT rename these struct variants' own fields, since that
+/// requires the separate `rename_all_fields` attribute, which this enum
+/// does not carry: the wire keys stay snake_case (is_relative, is_static),
+/// not isRelative/isStatic. No `#[serde(other)]` fallback; an unrecognized
+/// "kind" value fails with an unknown-variant error. `#[non_exhaustive]`
+/// here only affects Rust-level exhaustive match/construct checking outside
+/// this crate -- it has no effect on serde's generated (de)serialize code.
+///
+/// `Namespace` is confirmed spec residue from a dropped C#-roadmap item
+/// (docs/spec/07-edge-cases-and-failure-modes.md Part 3 finding #20;
+/// docs/spec/05-research-and-decisions.md §6 records C# dropped from the
+/// bespoke Go/Java-tier roadmap, while §10 separately adopts a not-yet-built
+/// generic tree-sitter fallback tier whose launch set includes C#). No
+/// analyzer in the current verbatim spec code constructs
+/// DependencyTarget::Namespace -- it is cosmetic residue in today's code,
+/// not a functional defect: the variant compiles and round-trips through
+/// serde normally.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+#[non_exhaustive]
+pub enum DependencyTarget {
+    File {
+        specifier: String,
+        resolved: Option<Utf8PathBuf>,
+        is_relative: bool,
+    },
+    RustPath {
+        segments: Vec<String>,
+        anchor: RustPathAnchor,
+        resolved: Option<Utf8PathBuf>,
+    },
+    Namespace {
+        segments: Vec<String>,
+        is_static: bool,
+        alias: Option<String>,
+    },
 }
 
