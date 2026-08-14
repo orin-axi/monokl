@@ -637,3 +637,13 @@ pub enum TsconfigMode {
     Manual(Utf8PathBuf),
     Skip,
 }
+/// monokl's workspace-construction options (AC-003, AC-004, AC-005). Exactly
+/// 2 fields in this declaration order: root: Utf8PathBuf, tsconfig:
+/// TsconfigMode. Derives Debug, Clone only -- no Serialize, no Deserialize
+/// (doubly true given tsconfig's own type, TsconfigMode, also lacks a serde
+/// derive).
+#[derive(Debug, Clone)]
+pub struct WorkspaceOptions {
+    pub root: Utf8PathBuf,
+    pub tsconfig: TsconfigMode,
+}
