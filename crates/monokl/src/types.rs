@@ -480,3 +480,27 @@ pub struct LineHit {
     pub text: String,
 }
 
+/// Search-command language filter (AC-007, AC-008, AC-009, AC-010).
+/// Exactly 4 variants in this declaration order. Derives `Debug`, `Clone`,
+/// `Copy`, `PartialEq`, `Eq`, `Serialize`, `Deserialize` -- the same
+/// fieldless-enum pattern as `SymbolKind`/`Visibility`/`BindingKind` --
+/// plus a `cli`-feature-gated `clap::ValueEnum` derive. No
+/// `#[non_exhaustive]`, no `#[serde(other)]` fallback. Carries
+/// `#[serde(rename_all = "lowercase")]`, unconditionally. Each variant's
+/// `#[cfg_attr(feature = "cli", value(name = "..."))]` supplies clap's own,
+/// independently maintained CLI value name -- stripped entirely from the
+/// compiled type when the `cli` feature is disabled.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
+pub enum Language {
+    #[cfg_attr(feature = "cli", value(name = "typescript"))]
+    TypeScript,
+    #[cfg_attr(feature = "cli", value(name = "javascript"))]
+    JavaScript,
+    #[cfg_attr(feature = "cli", value(name = "rust"))]
+    Rust,
+    #[cfg_attr(feature = "cli", value(name = "python"))]
+    Python,
+}
+
