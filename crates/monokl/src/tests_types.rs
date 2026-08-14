@@ -2660,3 +2660,119 @@ fn spec_007_all_field_types_and_derives_pinned() {
     assert_eq!(pinned_dep_diagnostics.len(), 1);
 }
 
+/// For each field name in `fields_in_order`, finds that field's `pub
+/// <name>:` declaration in `block` (which must occur strictly after the
+/// previous field's own declaration, enforcing declaration order the same
+/// way `assert_declaration_order` does) and asserts that the source text
+/// between the previous field's match and this field's match contains no
+/// `#[serde(` attribute line. This is a structural, source-level check --
+/// not a runtime behavioral proxy -- so it catches ANY field-level serde
+/// attribute (`skip_serializing_if`, `default`, `rename`, `flatten`, or any
+/// other), regardless of which specific attribute a future edit adds.
+fn assert_no_field_level_serde_attribute(block: &str, fields_in_order: &[&str]) {
+    let mut cursor = 0usize;
+    for field in fields_in_order {
+        let needle = format!("pub {field}:");
+        let field_start = block[cursor..]
+            .find(&needle)
+            .unwrap_or_else(|| panic!("field `{field}` not found after position {cursor} in declaration block"))
+            + cursor;
+        let preceding = &block[cursor..field_start];
+        assert!(
+            !preceding.contains("#[serde("),
+            "field `{field}` is preceded by a `#[serde(` attribute -- expected none per this field's \"no field-level serde attribute\" spec claim, found in: {preceding:?}"
+        );
+        cursor = field_start + needle.len();
+    }
+}
+
+/// Closes the field-level-serde-attribute-absence defect class structurally
+/// (SPEC-007 fix round 3), replacing the per-attribute-type behavioral
+/// proxies added in rounds 1 (`skip_serializing_if` absence via
+/// `to_value`/`contains_key`, e.g. `spec_007_no_skip_serializing_if_on_any_result_vec_field`
+/// above) and 2 (`#[serde(default)]` absence, found missing for
+/// `SearchLimits.max_tokens`/`SearchOptions.language` by the round-2 gate).
+/// Each of those proxies could only ever prove the absence of the one
+/// attribute type it happened to check for -- a future edit adding a
+/// *different* field-level attribute (e.g. `rename`, `flatten`, or any
+/// attribute not yet tested for) to any of these fields would pass both
+/// prior tests undetected. This test instead reads each of the 5 struct
+/// types' own source declaration directly from `types.rs` via
+/// `include_str!` and `enum_declaration_block` (already used for
+/// declaration-order pinning throughout this file, and confirmed to work
+/// unchanged on `pub struct` blocks by `line_hit_field_types_and_derives_pinned`),
+/// then asserts -- for every field each type's own spec criterion claims
+/// carries "no field-level serde attribute" -- that no `#[serde(` line
+/// appears anywhere between that field and the previous one. This makes it
+/// structurally impossible for ANY field-level serde attribute, of any
+/// kind, to be added to any of these 29 fields without breaking this test.
+///
+/// Field inventory, one-to-one with each type's own acceptance criterion:
+/// - SearchOptions (AC-001, 7 fields): query, path, allow_tests,
+///   no_gitignore, limits, exact, language.
+/// - SearchLimits (AC-004, 4 fields): max_results, max_bytes, max_tokens,
+///   max_candidates.
+/// - SearchResponse (AC-011, 7 fields): results,
+///   total_blocks_before_truncation, truncated, truncation_marker,
+///   total_bytes, total_tokens, diagnostics.
+/// - SymbolsResult (AC-013, 4 fields): files, total_symbol_count,
+///   truncation_marker, diagnostics.
+/// - DependentsResult (AC-015, 7 fields): file, dependents, imports,
+///   total_dependent_count, total_import_count, truncation_marker,
+///   diagnostics.
+///
+/// Language (AC-007) is deliberately excluded: it is a fieldless enum whose
+/// criterion claims the OPPOSITE for its variants (each carries an explicit
+/// `#[cfg_attr(feature = "cli", value(name = "..."))]`), not an absence
+/// claim -- there is nothing for this test's absence check to assert there.
+#[test]
+fn spec_007_field_level_attribute_absence_pinned_via_source_inspection() {
+    let src = include_str!("types.rs");
+
+    let search_options_block = enum_declaration_block(src, "pub struct SearchOptions");
+    assert_no_field_level_serde_attribute(
+        search_options_block,
+        &["query", "path", "allow_tests", "no_gitignore", "limits", "exact", "language"],
+    );
+
+    let search_limits_block = enum_declaration_block(src, "pub struct SearchLimits");
+    assert_no_field_level_serde_attribute(
+        search_limits_block,
+        &["max_results", "max_bytes", "max_tokens", "max_candidates"],
+    );
+
+    let search_response_block = enum_declaration_block(src, "pub struct SearchResponse");
+    assert_no_field_level_serde_attribute(
+        search_response_block,
+        &[
+            "results",
+            "total_blocks_before_truncation",
+            "truncated",
+            "truncation_marker",
+            "total_bytes",
+            "total_tokens",
+            "diagnostics",
+        ],
+    );
+
+    let symbols_result_block = enum_declaration_block(src, "pub struct SymbolsResult");
+    assert_no_field_level_serde_attribute(
+        symbols_result_block,
+        &["files", "total_symbol_count", "truncation_marker", "diagnostics"],
+    );
+
+    let dependents_result_block = enum_declaration_block(src, "pub struct DependentsResult");
+    assert_no_field_level_serde_attribute(
+        dependents_result_block,
+        &[
+            "file",
+            "dependents",
+            "imports",
+            "total_dependent_count",
+            "total_import_count",
+            "truncation_marker",
+            "diagnostics",
+        ],
+    );
+}
+
