@@ -170,3 +170,15 @@ pub enum DependencyTarget {
     },
 }
 
+/// A single named/local/kind binding within a `DependencyRecord` (AC-002).
+/// Exactly 3 fields in this declaration order, all required on deserialize
+/// -- no field-level attributes. Derives `Debug`, `Clone`, `Serialize`,
+/// `Deserialize` only; no `Copy`/`PartialEq`/`Eq`, no `#[non_exhaustive]`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DependencyBinding {
+    pub imported: String,
+    pub local: String,
+    pub kind: BindingKind,
+}
+
