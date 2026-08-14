@@ -2301,3 +2301,28 @@ fn search_response_empty_vecs_still_emit_key_and_null_truncation_marker() {
     assert_eq!(obj.get("truncationMarker"), Some(&serde_json::Value::Null));
 }
 
+use crate::types::SymbolsResult;
+use std::collections::BTreeMap;
+
+fn sample_symbol_entry(name: &str) -> SymbolEntry {
+    SymbolEntry { name: name.into(), kind: SymbolKind::Function, line: 1, signature: None, owner: None, trait_impl: None, visibility: None, kind_detail: None }
+}
+
+#[test]
+fn symbols_result_declaration_order_pinned_via_exact_serialize() {
+    let mut files: BTreeMap<camino::Utf8PathBuf, Vec<SymbolEntry>> = BTreeMap::new();
+    files.insert("z/last.ts".into(), vec![sample_symbol_entry("foo")]);
+    files.insert("a/first.ts".into(), vec![]);
+    let diag = Diagnostic { kind: DiagnosticKind::Degraded, path: None, message: "x".into() };
+    let sym = SymbolsResult { files, total_symbol_count: 1, truncation_marker: Some("t".into()), diagnostics: vec![diag] };
+    let expected = r#"{"files":{"a/first.ts":[],"z/last.ts":[{"name":"foo","kind":"function","line":1,"signature":null}]},"totalSymbolCount":1,"truncationMarker":"t","diagnostics":[{"kind":"degraded","path":null,"message":"x"}]}"#;
+    assert_eq!(serde_json::to_string(&sym).unwrap(), expected);
+}
+
+#[test]
+fn symbols_result_serialize_only_no_deserialize() {
+    fn assert_serialize_only<T: std::fmt::Debug + Clone + serde::Serialize>() {}
+    assert_serialize_only::<SymbolsResult>();
+    assert!(!DeProbe::<SymbolsResult>::IS);
+}
+
