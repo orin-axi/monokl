@@ -1932,3 +1932,14 @@ fn language_unknown_variant_errors_including_camel_case_form() {
     assert!(err2.to_string().contains("unknown variant"));
 }
 
+#[cfg(feature = "cli")]
+#[test]
+fn language_clap_value_enum_names_match_serde_names() {
+    use clap::ValueEnum;
+    for variant in Language::value_variants() {
+        let clap_name = variant.to_possible_value().unwrap().get_name().to_string();
+        let serde_name = serde_json::to_string(variant).unwrap().trim_matches('"').to_string();
+        assert_eq!(clap_name, serde_name);
+    }
+}
+
