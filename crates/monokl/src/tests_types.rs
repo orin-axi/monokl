@@ -2880,3 +2880,36 @@ fn workspace_options_no_serde_impl_pinned() {
     // Positive control (proves the probe itself isn't just always false).
     assert!(SerProbe::<CodeBlock>::IS);
 }
+#[test]
+fn workspace_options_new_sets_auto_and_accepts_into_utf8pathbuf() {
+    // AC-004: root accepts &str, String, and Utf8PathBuf alike via impl
+    // Into<Utf8PathBuf>; new() sets tsconfig to TsconfigMode::Auto
+    // unconditionally.
+    let from_str = WorkspaceOptions::new("src");
+    assert_eq!(from_str.root.as_str(), "src");
+    assert!(matches!(from_str.tsconfig, TsconfigMode::Auto));
+
+    let from_string = WorkspaceOptions::new(String::from("src2"));
+    assert_eq!(from_string.root.as_str(), "src2");
+    assert!(matches!(from_string.tsconfig, TsconfigMode::Auto));
+
+    let from_utf8pathbuf = WorkspaceOptions::new(camino::Utf8PathBuf::from("src3"));
+    assert_eq!(from_utf8pathbuf.root.as_str(), "src3");
+    assert!(matches!(from_utf8pathbuf.tsconfig, TsconfigMode::Auto));
+}
+
+#[test]
+fn workspace_options_with_tsconfig_mutates_tsconfig_leaves_root_and_chains() {
+    // AC-005: mut self by value, sets tsconfig to the given mode, leaves
+    // root untouched, returns Self for chaining.
+    let opts = WorkspaceOptions::new("src").with_tsconfig(TsconfigMode::Manual("tsconfig.custom.json".into()));
+    assert_eq!(opts.root.as_str(), "src");
+    match opts.tsconfig {
+        TsconfigMode::Manual(path) => assert_eq!(path.as_str(), "tsconfig.custom.json"),
+        TsconfigMode::Auto | TsconfigMode::Skip => panic!("expected Manual variant"),
+    }
+
+    let skipped = WorkspaceOptions::new("root2").with_tsconfig(TsconfigMode::Skip);
+    assert_eq!(skipped.root.as_str(), "root2");
+    assert!(matches!(skipped.tsconfig, TsconfigMode::Skip));
+}
