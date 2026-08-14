@@ -2985,3 +2985,55 @@ fn extract_request_required_file_and_option_leniency() {
     let extra: ExtractRequest = serde_json::from_str(r#"{"file":"a.ts","bogusKey":123}"#).unwrap();
     assert_eq!(extra.file.as_str(), "a.ts");
 }
+
+#[test]
+fn extract_request_line_start_and_line_end_numeric_three_way_rule() {
+    // AC-009, class 1 (valid): u64::MAX and 0 both succeed as Some(N) --
+    // usize's own range includes 0, mirroring SearchLimits' three-way rule
+    // (SPEC-007 AC-006) applied here to line_start/line_end.
+    let max: ExtractRequest =
+        serde_json::from_str(r#"{"file":"a.ts","lineStart":18446744073709551615}"#).unwrap();
+    assert_eq!(max.line_start, Some(usize::MAX));
+    let zero: ExtractRequest = serde_json::from_str(r#"{"file":"a.ts","lineStart":0}"#).unwrap();
+    assert_eq!(zero.line_start, Some(0));
+
+    // Class 2 (invalid-value): negative but within i64 range.
+    for (bad_json, field_snippet) in [
+        (r#"{"file":"a.ts","lineStart":-1}"#, "invalid value: integer `-1`, expected usize"),
+        (
+            r#"{"file":"a.ts","lineStart":-9223372036854775808}"#,
+            "invalid value: integer `-9223372036854775808`, expected usize",
+        ),
+        (r#"{"file":"a.ts","lineEnd":-1}"#, "invalid value: integer `-1`, expected usize"),
+    ] {
+        let err = serde_json::from_str::<ExtractRequest>(bad_json).unwrap_err();
+        assert!(err.to_string().contains(field_snippet), "json={bad_json} err={err}");
+    }
+
+    // Class 3 (invalid-type): fractional/exponent literal, or one past
+    // either boundary (reinterpreted as floating point).
+    for (bad_json, field_snippet) in [
+        (r#"{"file":"a.ts","lineStart":1.5}"#, "invalid type: floating point `1.5`, expected usize"),
+        (r#"{"file":"a.ts","lineStart":5.0}"#, "invalid type: floating point `5.0`, expected usize"),
+        (r#"{"file":"a.ts","lineStart":5e0}"#, "invalid type: floating point `5.0`, expected usize"),
+        (
+            r#"{"file":"a.ts","lineStart":18446744073709551616}"#,
+            "invalid type: floating point `1.8446744073709552e+19`, expected usize",
+        ),
+        (
+            r#"{"file":"a.ts","lineStart":-9223372036854775809}"#,
+            "invalid type: floating point `-9.223372036854776e+18`, expected usize",
+        ),
+        (r#"{"file":"a.ts","lineEnd":1.5}"#, "invalid type: floating point `1.5`, expected usize"),
+    ] {
+        let err = serde_json::from_str::<ExtractRequest>(bad_json).unwrap_err();
+        assert!(err.to_string().contains(field_snippet), "json={bad_json} err={err}");
+    }
+
+    // Class 4 (number-out-of-range): magnitude exceeds finite f64, naming
+    // neither usize nor any other type -- fails at parse time.
+    let err_range = serde_json::from_str::<ExtractRequest>(r#"{"file":"a.ts","lineStart":1e309}"#).unwrap_err();
+    assert!(err_range.to_string().contains("number out of range"));
+    let err_range_end = serde_json::from_str::<ExtractRequest>(r#"{"file":"a.ts","lineEnd":1e309}"#).unwrap_err();
+    assert!(err_range_end.to_string().contains("number out of range"));
+}
