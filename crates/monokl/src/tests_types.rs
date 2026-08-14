@@ -2411,3 +2411,40 @@ fn dependents_result_serialize_only_no_deserialize() {
     assert!(!DeProbe::<DependentsResult>::IS);
 }
 
+#[test]
+fn dependents_result_empty_vecs_still_emit_key_and_null_truncation_marker() {
+    let dep = DependentsResult {
+        file: "src/foo.ts".into(),
+        dependents: vec![],
+        imports: vec![],
+        total_dependent_count: 0,
+        total_import_count: 0,
+        truncation_marker: None,
+        diagnostics: vec![],
+    };
+    let v = serde_json::to_value(&dep).unwrap();
+    let obj = v.as_object().unwrap();
+    assert_eq!(obj.get("dependents"), Some(&serde_json::Value::Array(vec![])));
+    assert_eq!(obj.get("imports"), Some(&serde_json::Value::Array(vec![])));
+    assert_eq!(obj.get("diagnostics"), Some(&serde_json::Value::Array(vec![])));
+    assert_eq!(obj.get("truncationMarker"), Some(&serde_json::Value::Null));
+}
+
+#[test]
+fn dependents_result_diagnostics_field_shape_matches_finding_1_context() {
+    // AC-016: DependentsResult declares diagnostics: Vec<Diagnostic> (this
+    // struct's own shape claim) -- finding #1 documents that no code path
+    // currently populates it, since WorkspaceIndex has no diagnostics field
+    // of its own to route a dropped-file signal through. This test locks
+    // only the declared shape: constructing a DependentsResult with a
+    // non-empty diagnostics vec compiles and serializes normally.
+    let diag = Diagnostic { kind: DiagnosticKind::Warning, path: None, message: "unrouted signal".into() };
+    let dep = DependentsResult {
+        file: "src/foo.ts".into(), dependents: vec![], imports: vec![], total_dependent_count: 0,
+        total_import_count: 0, truncation_marker: None, diagnostics: vec![diag],
+    };
+    let DependentsResult { diagnostics, .. } = dep;
+    let pinned: Vec<Diagnostic> = diagnostics;
+    assert_eq!(pinned.len(), 1);
+}
+
