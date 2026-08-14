@@ -1485,6 +1485,44 @@ fn ranked_block_flatten_key_shape_no_collision_and_parent_context_null() {
     assert_eq!(obj.get("parentContext"), Some(&serde_json::Value::Null));
 }
 
+/// Pins RankedBlock's 7-field declaration order (AC-005) the same way
+/// code_block_symbol_signature_null_present_and_matched_vecs_skip_when_empty,
+/// parent_context_serialize_shape, and
+/// diagnostic_full_round_trip_exact_shape pin CodeBlock/ParentContext/
+/// Diagnostic: an exact `to_string` assertion, not merely a key-set
+/// comparison (which the flatten collision test above already does but
+/// cannot distinguish reordered fields, since BTreeSet is order-insensitive).
+/// matched_lines/matched_keywords are populated (non-empty) so all 8
+/// CodeBlock keys plus RankedBlock's own 6 keys -- 14 total -- appear in
+/// the output; an empty matched_lines/matched_keywords would omit 2 of
+/// them via skip_serializing_if (AC-007) and leave those two fields'
+/// relative position unpinned.
+#[test]
+fn ranked_block_declaration_order_pinned_via_exact_serialize() {
+    let block = CodeBlock {
+        file: "src/bar.rs".into(),
+        line_start: 2,
+        line_end: 9,
+        node_kind: SymbolKind::Struct,
+        code: "struct Bar;".into(),
+        symbol_signature: Some("struct Bar".into()),
+        matched_lines: vec![2, 3],
+        matched_keywords: vec!["Bar".into()],
+    };
+    let ranked = RankedBlock {
+        block,
+        bm25_score: 1.5,
+        coverage_boost: 0.5,
+        node_type_boost: 0.25,
+        final_score: 2.25,
+        rank: 1,
+        parent_context: None,
+    };
+    let expected = r#"{"file":"src/bar.rs","lineStart":2,"lineEnd":9,"nodeKind":"struct","code":"struct Bar;","symbolSignature":"struct Bar","matchedLines":[2,3],"matchedKeywords":["Bar"],"bm25Score":1.5,"coverageBoost":0.5,"nodeTypeBoost":0.25,"finalScore":2.25,"rank":1,"parentContext":null}"#;
+    let reserialized = serde_json::to_string(&ranked).unwrap();
+    assert_eq!(reserialized, expected);
+}
+
 #[test]
 fn ranked_block_flatten_preserves_skip_serializing_if() {
     let block = CodeBlock {
@@ -1666,6 +1704,20 @@ fn line_hit_field_types_and_derives_pinned() {
     let pinned_text: String = text;
     assert_eq!(pinned_line_number, 42);
     assert_eq!(pinned_text, "fn foo() {}");
+
+    // LineHit has no serde derive (AC-015), so field order is unobservable
+    // on the wire and the destructure above binds by name, not position --
+    // neither can pin declaration order. Reusing the include_str!-based
+    // technique enum_declaration_block/assert_declaration_order already
+    // established for RustPathAnchor/DependencyTarget/LangData (data-carrying
+    // enums where `as usize` discriminant casts don't apply): read LineHit's
+    // own source block directly from types.rs and check each field name
+    // appears at a strictly increasing text position. enum_declaration_block
+    // is purely a brace-matched text search keyed off the leading
+    // declaration string, so it works unchanged for a `pub struct` block too.
+    let src = include_str!("types.rs");
+    let block = enum_declaration_block(src, "pub struct LineHit");
+    assert_declaration_order(block, &["line_number", "text"]);
 }
 
 /// Exhaustive compile-time field-type and derive-list pinning for every
