@@ -2241,3 +2241,45 @@ fn search_options_limits_array_form_contract() {
     assert_eq!(parsed_nulls.limits.max_candidates, 4);
 }
 
+use crate::types::SearchResponse;
+
+fn sample_ranked_block() -> RankedBlock {
+    let block = CodeBlock {
+        file: "src/bar.rs".into(),
+        line_start: 2,
+        line_end: 9,
+        node_kind: SymbolKind::Struct,
+        code: "struct Bar;".into(),
+        symbol_signature: Some("struct Bar".into()),
+        matched_lines: vec![2, 3],
+        matched_keywords: vec!["Bar".into()],
+    };
+    RankedBlock { block, bm25_score: 1.5, coverage_boost: 0.5, node_type_boost: 0.25, final_score: 2.25, rank: 1, parent_context: None }
+}
+
+fn sample_diagnostic() -> Diagnostic {
+    Diagnostic { kind: DiagnosticKind::Warning, path: Some("src/foo.rs".into()), message: "m".into() }
+}
+
+#[test]
+fn search_response_declaration_order_pinned_via_exact_serialize() {
+    let resp = SearchResponse {
+        results: vec![sample_ranked_block()],
+        total_blocks_before_truncation: 10,
+        truncated: true,
+        truncation_marker: Some("...".into()),
+        total_bytes: 500,
+        total_tokens: 120,
+        diagnostics: vec![sample_diagnostic()],
+    };
+    let expected = r#"{"results":[{"file":"src/bar.rs","lineStart":2,"lineEnd":9,"nodeKind":"struct","code":"struct Bar;","symbolSignature":"struct Bar","matchedLines":[2,3],"matchedKeywords":["Bar"],"bm25Score":1.5,"coverageBoost":0.5,"nodeTypeBoost":0.25,"finalScore":2.25,"rank":1,"parentContext":null}],"totalBlocksBeforeTruncation":10,"truncated":true,"truncationMarker":"...","totalBytes":500,"totalTokens":120,"diagnostics":[{"kind":"warning","path":"src/foo.rs","message":"m"}]}"#;
+    assert_eq!(serde_json::to_string(&resp).unwrap(), expected);
+}
+
+#[test]
+fn search_response_serialize_only_no_deserialize() {
+    fn assert_serialize_only<T: std::fmt::Debug + Clone + serde::Serialize>() {}
+    assert_serialize_only::<SearchResponse>();
+    assert!(!DeProbe::<SearchResponse>::IS);
+}
+
