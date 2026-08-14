@@ -3079,3 +3079,23 @@ fn extract_request_file_wrong_type_errors() {
         assert!(err.to_string().contains(expected_snippet), "json={bad_json} err={err}");
     }
 }
+#[test]
+fn extract_request_line_start_and_line_end_wrong_type_errors() {
+    // AC-013: a present (non-null) lineStart/lineEnd of a non-numeric JSON
+    // type fails with an invalid-type error naming the found type. The
+    // Option<usize> leniency AC-008 establishes extends only to a missing
+    // key or explicit null, not to any other non-numeric JSON type.
+    for (bad_json, expected_snippet) in [
+        (r#"{"file":"a.ts","lineStart":"5"}"#, "invalid type: string \"5\", expected usize"),
+        (r#"{"file":"a.ts","lineStart":true}"#, "invalid type: boolean `true`, expected usize"),
+        (r#"{"file":"a.ts","lineStart":[]}"#, "invalid type: sequence, expected usize"),
+        (r#"{"file":"a.ts","lineStart":{}}"#, "invalid type: map, expected usize"),
+        (r#"{"file":"a.ts","lineEnd":"5"}"#, "invalid type: string \"5\", expected usize"),
+        (r#"{"file":"a.ts","lineEnd":true}"#, "invalid type: boolean `true`, expected usize"),
+        (r#"{"file":"a.ts","lineEnd":[]}"#, "invalid type: sequence, expected usize"),
+        (r#"{"file":"a.ts","lineEnd":{}}"#, "invalid type: map, expected usize"),
+    ] {
+        let err = serde_json::from_str::<ExtractRequest>(bad_json).unwrap_err();
+        assert!(err.to_string().contains(expected_snippet), "json={bad_json} err={err}");
+    }
+}
