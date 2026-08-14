@@ -1514,3 +1514,53 @@ fn ranked_block_flatten_preserves_skip_serializing_if() {
     assert_eq!(obj.get("symbolSignature"), Some(&serde_json::Value::Null));
 }
 
+
+#[test]
+fn ranked_block_non_finite_scores_serialize_as_null() {
+    fn sample_block() -> CodeBlock {
+        CodeBlock {
+            file: "src/foo.rs".into(),
+            line_start: 1,
+            line_end: 2,
+            node_kind: SymbolKind::Function,
+            code: "fn foo() {}".into(),
+            symbol_signature: None,
+            matched_lines: vec![],
+            matched_keywords: vec![],
+        }
+    }
+    fn finite_ranked() -> RankedBlock {
+        RankedBlock {
+            block: sample_block(),
+            bm25_score: 0.0,
+            coverage_boost: 0.0,
+            node_type_boost: 0.0,
+            final_score: 0.0,
+            rank: 0,
+            parent_context: None,
+        }
+    }
+
+    for non_finite in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        let mut r = finite_ranked();
+        r.bm25_score = non_finite;
+        let v = serde_json::to_value(&r).unwrap();
+        assert_eq!(v.get("bm25Score"), Some(&serde_json::Value::Null));
+
+        let mut r = finite_ranked();
+        r.coverage_boost = non_finite;
+        let v = serde_json::to_value(&r).unwrap();
+        assert_eq!(v.get("coverageBoost"), Some(&serde_json::Value::Null));
+
+        let mut r = finite_ranked();
+        r.node_type_boost = non_finite;
+        let v = serde_json::to_value(&r).unwrap();
+        assert_eq!(v.get("nodeTypeBoost"), Some(&serde_json::Value::Null));
+
+        let mut r = finite_ranked();
+        r.final_score = non_finite;
+        let v = serde_json::to_value(&r).unwrap();
+        assert_eq!(v.get("finalScore"), Some(&serde_json::Value::Null));
+    }
+}
+
