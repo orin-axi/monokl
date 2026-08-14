@@ -375,3 +375,26 @@ fn dependency_binding_missing_required_field_errors() {
     assert!(err_kind.to_string().contains("missing field `kind`"));
 }
 
+use crate::types::DependencyRecord;
+
+#[test]
+fn dependency_record_bindings_default_and_required_fields() {
+    let json = r#"{"line":1,"target":{"kind":"file","specifier":"x","resolved":null,"is_relative":false}}"#;
+    let rec: DependencyRecord = serde_json::from_str(json).unwrap();
+    assert_eq!(rec.bindings.len(), 0);
+
+    let v = serde_json::to_value(&rec).unwrap();
+    let obj = v.as_object().unwrap();
+    assert!(obj.contains_key("bindings"));
+    assert_eq!(obj.get("bindings"), Some(&serde_json::Value::Array(vec![])));
+
+    let err_line = serde_json::from_str::<DependencyRecord>(
+        r#"{"target":{"kind":"file","specifier":"x","resolved":null,"is_relative":false}}"#,
+    )
+    .unwrap_err();
+    assert!(err_line.to_string().contains("missing field `line`"));
+
+    let err_target = serde_json::from_str::<DependencyRecord>(r#"{"line":1}"#).unwrap_err();
+    assert!(err_target.to_string().contains("missing field `target`"));
+}
+
