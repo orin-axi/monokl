@@ -2039,3 +2039,37 @@ fn search_limits_negative_and_out_of_range_field_values_error() {
     let err_range = serde_json::from_str::<SearchLimits>(r#"{"maxBytes":1e309,"maxCandidates":5}"#).unwrap_err();
     assert!(err_range.to_string().contains("number out of range"));
 }
+use crate::types::SearchOptions;
+
+#[test]
+fn search_options_default_impl_values() {
+    let d = SearchOptions::default();
+    assert_eq!(d.query, "");
+    assert_eq!(d.path, camino::Utf8PathBuf::new());
+    assert!(!d.allow_tests);
+    assert!(!d.no_gitignore);
+    assert_eq!(d.limits.max_results, Some(50));
+    assert!(!d.exact);
+    assert_eq!(d.language, None);
+}
+
+#[test]
+fn search_options_declaration_order_pinned_via_full_round_trip() {
+    let json = r#"{"query":"q","path":"src","allowTests":true,"noGitignore":false,"limits":{"maxResults":10,"maxBytes":100,"maxTokens":200,"maxCandidates":5},"exact":true,"language":"rust"}"#;
+    let opts: SearchOptions = serde_json::from_str(json).unwrap();
+    assert_eq!(opts.query, "q");
+    assert_eq!(opts.path.as_str(), "src");
+    assert!(opts.allow_tests);
+    assert!(!opts.no_gitignore);
+    assert_eq!(opts.limits.max_results, Some(10));
+    assert!(opts.exact);
+    assert_eq!(opts.language, Some(Language::Rust));
+
+    let reserialized = serde_json::to_string(&opts).unwrap();
+    assert_eq!(reserialized, json);
+}
+
+fn valid_search_options_json() -> &'static str {
+    r#"{"query":"q","path":"src","allowTests":false,"noGitignore":false,"limits":{"maxBytes":100,"maxCandidates":5},"exact":false}"#
+}
+
