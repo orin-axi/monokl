@@ -2951,3 +2951,16 @@ fn workspace_options_must_use_asymmetry_pinned() {
     assert_attr_in_item_attribute_run(block, "#[must_use]", "pub fn new(", false);
     assert_attr_in_item_attribute_run(block, "#[must_use]", "pub fn with_tsconfig(", true);
 }
+use crate::types::ExtractRequest;
+
+#[test]
+fn extract_request_full_round_trip_exact_shape_pins_declaration_order() {
+    let json = r#"{"file":"src/foo.ts","lineStart":1,"lineEnd":5}"#;
+    let req: ExtractRequest = serde_json::from_str(json).unwrap();
+    assert_eq!(req.file.as_str(), "src/foo.ts");
+    assert_eq!(req.line_start, Some(1));
+    assert_eq!(req.line_end, Some(5));
+
+    let reserialized = serde_json::to_string(&req).unwrap();
+    assert_eq!(reserialized, json);
+}
