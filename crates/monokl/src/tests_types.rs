@@ -2871,3 +2871,12 @@ fn workspace_options_field_declaration_order_and_types_pinned() {
     assert_eq!(pinned_root.as_str(), "proj");
     assert!(matches!(pinned_tsconfig, TsconfigMode::Skip));
 }
+#[test]
+fn workspace_options_no_serde_impl_pinned() {
+    // AC-003: no Serialize/Deserialize whatsoever -- doubly true given
+    // tsconfig's own type (TsconfigMode) also lacks a serde derive.
+    assert!(!SerProbe::<WorkspaceOptions>::IS);
+    assert!(!DeProbe::<WorkspaceOptions>::IS);
+    // Positive control (proves the probe itself isn't just always false).
+    assert!(SerProbe::<CodeBlock>::IS);
+}
