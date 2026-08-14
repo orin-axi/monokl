@@ -1581,3 +1581,15 @@ fn diagnostic_kind_lowercase_forms() {
     }
 }
 
+#[test]
+fn diagnostic_kind_variant_count_and_order_pinned() {
+    let assert_shape = |k: DiagnosticKind| match k {
+        DiagnosticKind::Degraded | DiagnosticKind::Skipped | DiagnosticKind::Warning => {}
+    };
+    assert_shape(DiagnosticKind::Degraded);
+
+    assert_eq!(DiagnosticKind::Degraded as usize, 0);
+    assert_eq!(DiagnosticKind::Skipped as usize, 1);
+    assert_eq!(DiagnosticKind::Warning as usize, 2);
+}
+
