@@ -367,3 +367,20 @@ pub struct CodeBlock {
     pub matched_keywords: Vec<String>,
 }
 
+/// A symbol's enclosing context at the point a `CodeBlock` match occurred
+/// (AC-009). Exactly 3 fields in this declaration order. Derives `Debug`,
+/// `Clone`, `Serialize` only -- no `Deserialize`, no `Copy`/`PartialEq`/
+/// `Eq`. Like `RankedBlock`, this type can never be parsed from JSON: it
+/// has no deserialize-side contract of any kind, so no missing-field or
+/// leniency framing applies to it the way it does to `CodeBlock`. No
+/// field carries a field-level attribute; all 3 are unconditionally
+/// present in serialize output. `kind: SymbolKind` references the enum
+/// locked in SPEC-003.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ParentContext {
+    pub kind: SymbolKind,
+    pub name: String,
+    pub line: usize,
+}
+
