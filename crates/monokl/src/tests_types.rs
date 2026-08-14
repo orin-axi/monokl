@@ -1423,3 +1423,19 @@ fn code_block_unenforced_invariants_deserialize_successfully() {
     assert!(block2.matched_lines.iter().any(|&l| l > block2.line_end));
 }
 
+use crate::types::ParentContext;
+
+#[test]
+fn parent_context_serialize_shape() {
+    let ctx = ParentContext { kind: SymbolKind::Class, name: "Foo".into(), line: 3 };
+    let v = serde_json::to_value(&ctx).unwrap();
+    let obj = v.as_object().unwrap();
+    assert_eq!(obj.get("kind"), Some(&serde_json::Value::String("class".into())));
+    assert_eq!(obj.get("name"), Some(&serde_json::Value::String("Foo".into())));
+    assert_eq!(obj.get("line"), Some(&serde_json::Value::Number(3.into())));
+    assert_eq!(obj.len(), 3);
+
+    let reserialized = serde_json::to_string(&ctx).unwrap();
+    assert_eq!(reserialized, r#"{"kind":"class","name":"Foo","line":3}"#);
+}
+
