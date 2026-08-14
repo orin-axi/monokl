@@ -414,3 +414,26 @@ pub struct RankedBlock {
     pub parent_context: Option<ParentContext>,
 }
 
+/// The kind of a single diagnostic emitted by monokl's ranking pipeline
+/// or a command's own analysis (AC-012, AC-013, AC-014). Exactly 3
+/// variants in this declaration order. Derives `Debug`, `Clone`, `Copy`,
+/// `PartialEq`, `Eq`, `Serialize`, `Deserialize` -- the same derive list
+/// as `SymbolKind`/`Visibility`/`BindingKind` (fieldless enum). No
+/// `#[non_exhaustive]`, no `#[serde(other)]` fallback. Carries
+/// `#[serde(rename_all = "lowercase")]` -- "lowercase", not "camelCase",
+/// the rule used by every other enum/struct locked so far in this
+/// project. "lowercase" lowercases a variant name's every character
+/// uniformly, with no word-boundary handling of any kind -- a
+/// categorically different transform from "camelCase". For this enum's 3
+/// actual single-word variants, "lowercase" and "camelCase" happen to
+/// produce identical output (degraded/skipped/warning) -- a coincidence
+/// of these variant names, not evidence the two rules are
+/// interchangeable in general.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DiagnosticKind {
+    Degraded,
+    Skipped,
+    Warning,
+}
+
