@@ -1341,3 +1341,43 @@ fn code_block_symbol_signature_null_present_and_matched_vecs_skip_when_empty() {
     assert_eq!(reserialized, expected);
 }
 
+#[test]
+fn code_block_missing_required_field_errors() {
+    let err_file = serde_json::from_str::<CodeBlock>(
+        r#"{"lineStart":1,"lineEnd":5,"nodeKind":"function","code":"fn foo() {}"}"#,
+    )
+    .unwrap_err();
+    assert!(err_file.to_string().contains("missing field `file`"));
+
+    let err_line_start = serde_json::from_str::<CodeBlock>(
+        r#"{"file":"src/foo.rs","lineEnd":5,"nodeKind":"function","code":"fn foo() {}"}"#,
+    )
+    .unwrap_err();
+    assert!(err_line_start.to_string().contains("missing field `lineStart`"));
+
+    let err_line_end = serde_json::from_str::<CodeBlock>(
+        r#"{"file":"src/foo.rs","lineStart":1,"nodeKind":"function","code":"fn foo() {}"}"#,
+    )
+    .unwrap_err();
+    assert!(err_line_end.to_string().contains("missing field `lineEnd`"));
+
+    let err_node_kind = serde_json::from_str::<CodeBlock>(
+        r#"{"file":"src/foo.rs","lineStart":1,"lineEnd":5,"code":"fn foo() {}"}"#,
+    )
+    .unwrap_err();
+    assert!(err_node_kind.to_string().contains("missing field `nodeKind`"));
+
+    let err_code = serde_json::from_str::<CodeBlock>(
+        r#"{"file":"src/foo.rs","lineStart":1,"lineEnd":5,"nodeKind":"function"}"#,
+    )
+    .unwrap_err();
+    assert!(err_code.to_string().contains("missing field `code`"));
+}
+
+#[test]
+fn code_block_unknown_node_kind_errors() {
+    let json = r#"{"file":"src/foo.rs","lineStart":1,"lineEnd":5,"nodeKind":"bogus","code":"fn foo() {}"}"#;
+    let err = serde_json::from_str::<CodeBlock>(json).unwrap_err();
+    assert!(err.to_string().contains("unknown variant"));
+}
+
