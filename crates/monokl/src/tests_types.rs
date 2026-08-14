@@ -1067,3 +1067,230 @@ fn lang_data_jsx_elements_returns_full_slice_not_truncated() {
     assert_eq!(ts.jsx_elements()[2].name, "span");
 }
 
+/// Exhaustive compile-time field-type pinning for every field of every
+/// SPEC-005 type. serde treats several distinct Rust types identically on
+/// the wire (`String` vs `camino::Utf8PathBuf`, `Vec<String>` vs
+/// `Vec<Utf8PathBuf>`, a struct field vs its boxed equivalent, etc.), so a
+/// runtime assertion on a deserialized value can never distinguish the
+/// declared field type from a serde-equivalent sibling -- only a
+/// compile-time `let x: ExactType = value.field` binding can. Five prior
+/// fix rounds each pinned only the specific fields a gate pass happened to
+/// name; this test instead inventories and pins EVERY field/payload of all
+/// 14 SPEC-005 types in one place, so completeness is self-evident without
+/// cross-referencing types.rs by hand.
+///
+/// Full inventory (35 fields/payloads total; 6 already had a typed pin
+/// before this test -- DependencyRecord.line, ExportRecord.line,
+/// JsxElementEntry.line, DependencyTarget::File.resolved,
+/// DependencyTarget::RustPath.resolved, TsData.unresolved_aliases, see
+/// `spec_005_derive_lists_pinned` and
+/// `dependency_target_option_fields_key_present_and_typed_when_none` above
+/// -- this test does not duplicate those 6, only the remaining 29):
+///
+/// - BindingKind: fieldless (5 variants) -- nothing to pin.
+/// - RustPathAnchor: Crate/Super/Selff fieldless; Extern(String) payload --
+///   pinned below.
+/// - DependencyTarget::File: specifier: String, resolved: Option<Utf8PathBuf>
+///   (already pinned), is_relative: bool -- specifier and is_relative
+///   pinned below.
+/// - DependencyTarget::RustPath: segments: Vec<String>, anchor:
+///   RustPathAnchor, resolved: Option<Utf8PathBuf> (already pinned) --
+///   segments and anchor pinned below.
+/// - DependencyTarget::Namespace: segments: Vec<String>, is_static: bool,
+///   alias: Option<String> -- all 3 pinned below.
+/// - DependencyBinding: imported: String, local: String, kind: BindingKind
+///   -- all 3 pinned below.
+/// - DependencyRecord: line: usize (already pinned), bindings:
+///   Vec<DependencyBinding>, target: DependencyTarget -- bindings and
+///   target pinned below.
+/// - ExportRecord: name: String, line: usize (already pinned), re_export:
+///   bool -- name and re_export pinned below.
+/// - JsxAttribute: name: String, string_value: Option<String>,
+///   is_expression: bool, is_spread: bool -- all 4 pinned below.
+/// - JsxElementEntry: name: String, is_html: bool, line: usize (already
+///   pinned), attributes: Vec<JsxAttribute> -- name, is_html, attributes
+///   pinned below.
+/// - RustData, PythonData, GoData, JavaData: fieldless -- nothing to pin.
+/// - TsData: jsx_elements: Vec<JsxElementEntry>, type_only_imports:
+///   Vec<String>, unresolved_aliases: Vec<String> (already pinned) --
+///   jsx_elements and type_only_imports pinned below.
+/// - LangData: Ts(TsData), Rust(RustData), Python(PythonData), Go(GoData),
+///   Java(JavaData) -- all 5 wrapped payload types pinned below (each
+///   variant's own inner fields are covered by that type's own entry
+///   above, not repeated here).
+///
+/// Every `match`/`if let` below has no wildcard arm on the field-bearing
+/// side, so a variant rename or a field being added/removed is a compile
+/// error here too, not just a silent miss.
+#[test]
+fn spec_005_all_field_types_pinned() {
+    // -- RustPathAnchor::Extern(String) --
+    match RustPathAnchor::Extern("foo".into()) {
+        RustPathAnchor::Extern(payload) => {
+            let pinned: String = payload;
+            assert_eq!(pinned, "foo");
+        }
+        RustPathAnchor::Crate | RustPathAnchor::Super | RustPathAnchor::Selff => {
+            panic!("expected Extern variant")
+        }
+    }
+
+    // -- DependencyTarget::File { specifier, is_relative, .. } --
+    // (resolved already pinned in dependency_target_option_fields_key_present_and_typed_when_none)
+    let file = DependencyTarget::File { specifier: "spec".into(), resolved: None, is_relative: true };
+    if let DependencyTarget::File { specifier, is_relative, .. } = file {
+        let pinned_specifier: String = specifier;
+        let pinned_is_relative: bool = is_relative;
+        assert_eq!(pinned_specifier, "spec");
+        assert!(pinned_is_relative);
+    } else {
+        panic!("expected File variant");
+    }
+
+    // -- DependencyTarget::RustPath { segments, anchor, .. } --
+    // (resolved already pinned in dependency_target_option_fields_key_present_and_typed_when_none)
+    let rust_path =
+        DependencyTarget::RustPath { segments: vec!["crate".into(), "foo".into()], anchor: RustPathAnchor::Crate, resolved: None };
+    if let DependencyTarget::RustPath { segments, anchor, .. } = rust_path {
+        let pinned_segments: Vec<String> = segments;
+        let pinned_anchor: RustPathAnchor = anchor;
+        assert_eq!(pinned_segments, vec!["crate".to_string(), "foo".to_string()]);
+        assert!(matches!(pinned_anchor, RustPathAnchor::Crate));
+    } else {
+        panic!("expected RustPath variant");
+    }
+
+    // -- DependencyTarget::Namespace { segments, is_static, alias } --
+    let ns = DependencyTarget::Namespace { segments: vec!["System".into()], is_static: true, alias: Some("S".into()) };
+    if let DependencyTarget::Namespace { segments, is_static, alias } = ns {
+        let pinned_segments: Vec<String> = segments;
+        let pinned_is_static: bool = is_static;
+        let pinned_alias: Option<String> = alias;
+        assert_eq!(pinned_segments, vec!["System".to_string()]);
+        assert!(pinned_is_static);
+        assert_eq!(pinned_alias, Some("S".to_string()));
+    } else {
+        panic!("expected Namespace variant");
+    }
+
+    // -- DependencyBinding { imported, local, kind } --
+    let binding = DependencyBinding { imported: "im".into(), local: "lo".into(), kind: BindingKind::Named };
+    let DependencyBinding { imported, local, kind } = binding;
+    let pinned_imported: String = imported;
+    let pinned_local: String = local;
+    let pinned_kind: BindingKind = kind;
+    assert_eq!(pinned_imported, "im");
+    assert_eq!(pinned_local, "lo");
+    assert!(matches!(pinned_kind, BindingKind::Named));
+
+    // -- DependencyRecord { bindings, target, .. } --
+    // (line already pinned in spec_005_derive_lists_pinned)
+    let rec = DependencyRecord {
+        line: 1,
+        bindings: vec![DependencyBinding { imported: "a".into(), local: "b".into(), kind: BindingKind::Glob }],
+        target: DependencyTarget::File { specifier: "x".into(), resolved: None, is_relative: false },
+    };
+    let DependencyRecord { bindings, target, .. } = rec;
+    let pinned_bindings: Vec<DependencyBinding> = bindings;
+    let pinned_target: DependencyTarget = target;
+    assert_eq!(pinned_bindings.len(), 1);
+    assert!(matches!(pinned_target, DependencyTarget::File { .. }));
+
+    // -- ExportRecord { name, re_export, .. } --
+    // (line already pinned in spec_005_derive_lists_pinned)
+    let export_rec = ExportRecord { name: "n".into(), line: 1, re_export: true };
+    let ExportRecord { name, re_export, .. } = export_rec;
+    let pinned_name: String = name;
+    let pinned_re_export: bool = re_export;
+    assert_eq!(pinned_name, "n");
+    assert!(pinned_re_export);
+
+    // -- JsxAttribute { name, string_value, is_expression, is_spread } --
+    let attr = JsxAttribute { name: "n".into(), string_value: Some("v".into()), is_expression: true, is_spread: false };
+    let JsxAttribute { name, string_value, is_expression, is_spread } = attr;
+    let pinned_attr_name: String = name;
+    let pinned_string_value: Option<String> = string_value;
+    let pinned_is_expression: bool = is_expression;
+    let pinned_is_spread: bool = is_spread;
+    assert_eq!(pinned_attr_name, "n");
+    assert_eq!(pinned_string_value, Some("v".to_string()));
+    assert!(pinned_is_expression);
+    assert!(!pinned_is_spread);
+
+    // -- JsxElementEntry { name, is_html, attributes, .. } --
+    // (line already pinned in spec_005_derive_lists_pinned)
+    let elem = JsxElementEntry {
+        name: "n".into(),
+        is_html: true,
+        line: 1,
+        attributes: vec![JsxAttribute { name: "a".into(), string_value: None, is_expression: false, is_spread: false }],
+    };
+    let JsxElementEntry { name, is_html, attributes, .. } = elem;
+    let pinned_elem_name: String = name;
+    let pinned_is_html: bool = is_html;
+    let pinned_attributes: Vec<JsxAttribute> = attributes;
+    assert_eq!(pinned_elem_name, "n");
+    assert!(pinned_is_html);
+    assert_eq!(pinned_attributes.len(), 1);
+
+    // -- TsData { jsx_elements, type_only_imports, .. } --
+    // (unresolved_aliases already pinned in ts_data_unresolved_aliases_populated_full_round_trip)
+    let ts_data = TsData {
+        jsx_elements: vec![JsxElementEntry { name: "d".into(), is_html: true, line: 1, attributes: vec![] }],
+        type_only_imports: vec!["T".into()],
+        unresolved_aliases: vec![],
+    };
+    let TsData { jsx_elements, type_only_imports, .. } = ts_data;
+    let pinned_jsx_elements: Vec<JsxElementEntry> = jsx_elements;
+    let pinned_type_only_imports: Vec<String> = type_only_imports;
+    assert_eq!(pinned_jsx_elements.len(), 1);
+    assert_eq!(pinned_type_only_imports, vec!["T".to_string()]);
+
+    // -- LangData's 5 wrapped payload types --
+    match LangData::Ts(TsData::default()) {
+        LangData::Ts(inner) => {
+            let pinned: TsData = inner;
+            assert_eq!(pinned.jsx_elements.len(), 0);
+        }
+        LangData::Rust(_) | LangData::Python(_) | LangData::Go(_) | LangData::Java(_) => {
+            panic!("expected Ts variant")
+        }
+    }
+    match LangData::Rust(RustData {}) {
+        LangData::Rust(inner) => {
+            let pinned: RustData = inner;
+            let _ = pinned;
+        }
+        LangData::Ts(_) | LangData::Python(_) | LangData::Go(_) | LangData::Java(_) => {
+            panic!("expected Rust variant")
+        }
+    }
+    match LangData::Python(PythonData {}) {
+        LangData::Python(inner) => {
+            let pinned: PythonData = inner;
+            let _ = pinned;
+        }
+        LangData::Ts(_) | LangData::Rust(_) | LangData::Go(_) | LangData::Java(_) => {
+            panic!("expected Python variant")
+        }
+    }
+    match LangData::Go(GoData {}) {
+        LangData::Go(inner) => {
+            let pinned: GoData = inner;
+            let _ = pinned;
+        }
+        LangData::Ts(_) | LangData::Rust(_) | LangData::Python(_) | LangData::Java(_) => {
+            panic!("expected Go variant")
+        }
+    }
+    match LangData::Java(JavaData {}) {
+        LangData::Java(inner) => {
+            let pinned: JavaData = inner;
+            let _ = pinned;
+        }
+        LangData::Ts(_) | LangData::Rust(_) | LangData::Python(_) | LangData::Go(_) => {
+            panic!("expected Java variant")
+        }
+    }
+}
+
