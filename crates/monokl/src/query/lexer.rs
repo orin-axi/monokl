@@ -117,4 +117,49 @@ mod tests {
         let mut l = Lexer::new("");
         assert_eq!(l.next_token(), Token::Eof);
     }
+
+    #[test]
+    fn next_token_plus_consumes_one_byte_regardless_of_follower() {
+        let mut l = Lexer::new("+");
+        assert_eq!(l.next_token(), Token::Plus);
+        assert_eq!(l.pos, 1);
+
+        let mut l2 = Lexer::new("+x");
+        assert_eq!(l2.next_token(), Token::Plus);
+        assert_eq!(l2.pos, 1);
+    }
+
+    #[test]
+    fn next_token_minus_consumes_one_byte_regardless_of_follower() {
+        let mut l = Lexer::new("-");
+        assert_eq!(l.next_token(), Token::Minus);
+        assert_eq!(l.pos, 1);
+    }
+
+    #[test]
+    fn next_token_quote_consumes_opening_quote_then_delegates() {
+        let mut l = Lexer::new("\"ab\"");
+        assert_eq!(l.next_token(), Token::QuotedString("ab".to_string()));
+    }
+
+    #[test]
+    fn next_token_regex_prefix_checked_before_word_fallback() {
+        let mut l = Lexer::new("regex:foo");
+        assert_eq!(l.next_token(), Token::RegexPrefix);
+        assert_eq!(l.pos, 6);
+        assert_eq!(l.next_token(), Token::Word("foo".to_string()));
+    }
+
+    #[test]
+    fn next_token_word_fallback_for_non_special_non_regex_input() {
+        let mut l = Lexer::new("hello");
+        assert_eq!(l.next_token(), Token::Word("hello".to_string()));
+    }
+
+    #[test]
+    fn next_token_skips_leading_ascii_whitespace_unconditionally() {
+        let mut l = Lexer::new("   \t\n  +foo");
+        assert_eq!(l.next_token(), Token::Plus);
+        assert_eq!(l.next_token(), Token::Word("foo".to_string()));
+    }
 }
