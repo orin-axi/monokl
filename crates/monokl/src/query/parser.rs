@@ -141,4 +141,57 @@ mod tests {
         assert!(!terms[0].is_regex);
         assert_eq!(terms[0].pattern, "\u{00A0}foo");
     }
+
+    // AC-010 / AC-012: Plus/Minus + Word or QuotedString content produce the
+    // expected modifier with an escaped pattern; RegexPrefix/Plus/Minus/Eof as
+    // content yield no term for that occurrence.
+    #[test]
+    fn plus_word_produces_required_escaped_term() {
+        let terms = parse("+foo").unwrap();
+        assert_eq!(terms.len(), 1);
+        assert_eq!(terms[0].modifier, Modifier::Required);
+        assert_eq!(terms[0].pattern, "foo");
+        assert!(!terms[0].is_regex);
+    }
+
+    #[test]
+    fn minus_quoted_produces_excluded_escaped_term() {
+        let terms = parse("-\"a.b\"").unwrap();
+        assert_eq!(terms.len(), 1);
+        assert_eq!(terms[0].modifier, Modifier::Excluded);
+        assert_eq!(terms[0].pattern, regex::escape("a.b"));
+        assert!(!terms[0].is_regex);
+    }
+
+    #[test]
+    fn bare_word_and_quoted_string_produce_optional_escaped_terms() {
+        let terms = parse("foo.bar \"a b\"").unwrap();
+        assert_eq!(terms.len(), 2);
+        assert_eq!(terms[0].modifier, Modifier::Optional);
+        assert_eq!(terms[0].pattern, regex::escape("foo.bar"));
+        assert!(!terms[0].is_regex);
+        assert_eq!(terms[1].modifier, Modifier::Optional);
+        assert_eq!(terms[1].pattern, regex::escape("a b"));
+    }
+
+    #[test]
+    fn dangling_plus_minus_at_eof_produce_no_term() {
+        assert!(parse("+").unwrap().is_empty());
+        assert!(parse("-").unwrap().is_empty());
+    }
+
+    #[test]
+    fn plus_followed_by_plus_swallows_the_second_plus_as_content_then_reprocesses_foo() {
+        // content = Token::Plus -> content_to_term returns None for the first
+        // Plus occurrence. The second '+' is consumed as that lookahead and is
+        // never itself seen by the main loop -- it is not rewound. The main
+        // loop's next lexer.next_token() call then reads "foo" fresh as a bare
+        // word, producing a single Optional (not Required) term -- the same
+        // swallowed-lookahead-token pattern AC-011 documents for "regex: -foo".
+        let terms = parse("+ +foo").unwrap();
+        assert_eq!(terms.len(), 1);
+        assert_eq!(terms[0].modifier, Modifier::Optional);
+        assert!(!terms[0].is_regex);
+        assert_eq!(terms[0].pattern, regex::escape("foo"));
+    }
 }
