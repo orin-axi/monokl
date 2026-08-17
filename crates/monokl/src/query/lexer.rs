@@ -203,4 +203,35 @@ mod tests {
             assert_eq!(s.chars().count(), 3);
         }
     }
+
+    // Example 3: quote a backslash backslash b quote -> "a\\b" (two literal
+    // backslashes, 4-char payload) -- neither backslash is treated as an escape.
+    #[test]
+    fn quoted_double_backslash_neither_is_an_escape() {
+        let mut l = Lexer::new("\"a\\\\b\"");
+        let tok = l.next_token();
+        assert_eq!(tok, Token::QuotedString("a\\\\b".to_string()));
+        if let Token::QuotedString(s) = tok {
+            assert_eq!(s.chars().count(), 4);
+            assert_eq!(s.matches('\\').count(), 2);
+        }
+    }
+
+    // Example 4: quote a backslash, EOF immediately after -- unterminated AND
+    // trailing-escape tolerance compose silently, no error, 2-char payload.
+    #[test]
+    fn quoted_unterminated_with_trailing_backslash_tolerated_silently() {
+        let mut l = Lexer::new("\"a\\");
+        let tok = l.next_token();
+        assert_eq!(tok, Token::QuotedString("a\\".to_string()));
+        if let Token::QuotedString(s) = tok {
+            assert_eq!(s.chars().count(), 2);
+        }
+    }
+
+    #[test]
+    fn quoted_unterminated_no_backslash_returns_accumulated_chars_no_error() {
+        let mut l = Lexer::new("\"abc");
+        assert_eq!(l.next_token(), Token::QuotedString("abc".to_string()));
+    }
 }
