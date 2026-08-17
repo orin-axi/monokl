@@ -245,4 +245,25 @@ mod tests {
         assert!(!terms[0].is_regex);
         assert_eq!(terms[0].pattern, "foo");
     }
+
+    // AC-013: "+regex:foo" and "-regex:foo" degrade to a bare Optional,
+    // non-regex, escaped-literal match on "foo" -- both modifier AND regex
+    // semantics discarded, not merely the modifier.
+    #[test]
+    fn plus_regex_prefix_degrades_to_optional_escaped_literal_foo() {
+        let terms = parse("+regex:foo").unwrap();
+        assert_eq!(terms.len(), 1);
+        assert_eq!(terms[0].modifier, Modifier::Optional);
+        assert!(!terms[0].is_regex);
+        assert_eq!(terms[0].pattern, regex::escape("foo"));
+    }
+
+    #[test]
+    fn minus_regex_prefix_degrades_to_optional_escaped_literal_foo() {
+        let terms = parse("-regex:foo").unwrap();
+        assert_eq!(terms.len(), 1);
+        assert_eq!(terms[0].modifier, Modifier::Optional);
+        assert!(!terms[0].is_regex);
+        assert_eq!(terms[0].pattern, regex::escape("foo"));
+    }
 }
