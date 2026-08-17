@@ -162,4 +162,26 @@ mod tests {
         assert_eq!(l.next_token(), Token::Plus);
         assert_eq!(l.next_token(), Token::Word("foo".to_string()));
     }
+
+    // AC-005: read_word greedily consumes until whitespace/EOF; '+'/'-'/'"'
+    // and "regex:" are ordinary mid-word characters.
+    #[test]
+    fn word_does_not_split_on_internal_plus() {
+        let mut l = Lexer::new("foo+bar");
+        assert_eq!(l.next_token(), Token::Word("foo+bar".to_string()));
+        assert_eq!(l.next_token(), Token::Eof);
+    }
+
+    #[test]
+    fn word_does_not_split_on_internal_minus_quote_or_regex_prefix() {
+        let mut l = Lexer::new("a-b\"cregex:d");
+        assert_eq!(l.next_token(), Token::Word("a-b\"cregex:d".to_string()));
+    }
+
+    #[test]
+    fn word_stops_at_whitespace() {
+        let mut l = Lexer::new("foo bar");
+        assert_eq!(l.next_token(), Token::Word("foo".to_string()));
+        assert_eq!(l.next_token(), Token::Word("bar".to_string()));
+    }
 }
