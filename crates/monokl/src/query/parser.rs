@@ -266,4 +266,26 @@ mod tests {
         assert!(!terms[0].is_regex);
         assert_eq!(terms[0].pattern, regex::escape("foo"));
     }
+
+    // AC-014: LIMIT=64 term cap, strictly greater-than.
+    #[test]
+    fn exactly_64_terms_succeeds() {
+        let input: Vec<String> = (0..64).map(|i| format!("w{i}")).collect();
+        let terms = parse(&input.join(" ")).unwrap();
+        assert_eq!(terms.len(), 64);
+    }
+
+    #[test]
+    fn sixty_five_terms_fails_with_too_many_terms() {
+        let input: Vec<String> = (0..65).map(|i| format!("w{i}")).collect();
+        let err = parse(&input.join(" ")).unwrap_err();
+        match err {
+            MonoklError::TooManyTerms { count, limit } => {
+                assert_eq!(count, 65);
+                assert_eq!(limit, 64);
+            }
+            other => panic!("expected TooManyTerms, got {other:?}"),
+        }
+        assert_eq!(err.to_string(), "query has too many terms: 65 > 64");
+    }
 }
