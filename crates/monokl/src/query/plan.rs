@@ -57,4 +57,30 @@ mod tests {
         assert!(qp.excluded.is_empty());
         assert!(qp.scored.is_empty());
     }
+
+    // AC-017: from_terms partitions by modifier, preserving relative order;
+    // every index appears in exactly one category.
+    fn term(modifier: Modifier, pattern: &str) -> ParsedTerm {
+        ParsedTerm { modifier, pattern: pattern.to_string(), is_regex: false }
+    }
+
+    #[test]
+    fn from_terms_partitions_preserving_relative_order() {
+        let terms = vec![
+            term(Modifier::Optional, "s0"),
+            term(Modifier::Required, "r0"),
+            term(Modifier::Excluded, "e0"),
+            term(Modifier::Required, "r1"),
+            term(Modifier::Optional, "s1"),
+            term(Modifier::Excluded, "e1"),
+        ];
+        let qp = QueryPlan::from_terms(terms);
+        assert_eq!(qp.required, vec![1, 3]);
+        assert_eq!(qp.excluded, vec![2, 5]);
+        assert_eq!(qp.scored, vec![0, 4]);
+        // Every index appears in exactly one category.
+        let mut all: Vec<usize> = qp.required.iter().chain(qp.excluded.iter()).chain(qp.scored.iter()).copied().collect();
+        all.sort_unstable();
+        assert_eq!(all, vec![0, 1, 2, 3, 4, 5]);
+    }
 }
