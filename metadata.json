@@ -1,0 +1,34 @@
+{
+  "cli_version": "0.10.1-nightly.202608150610.7ddf2fc26",
+  "checkpoint_id": "01M08QSX2C9WQS4AJVPSB42VPK",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 43,
+  "files_touched": [
+    "crates/monokl/src/query/mod.rs",
+    "crates/monokl/src/query/plan.rs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 33271,
+    "cache_creation_tokens": 12168843,
+    "cache_read_tokens": 991166043,
+    "output_tokens": 2177491,
+    "api_call_count": 2095,
+    "subagent_tokens": {
+      "input_tokens": 0,
+      "cache_creation_tokens": 0,
+      "cache_read_tokens": 0,
+      "output_tokens": 0,
+      "api_call_count": 0
+    }
+  }
+}
