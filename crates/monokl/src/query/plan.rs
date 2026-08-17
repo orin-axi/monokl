@@ -96,4 +96,32 @@ mod tests {
         assert!(!excl_only.is_empty());
         assert!(excl_only.search_patterns().is_empty());
     }
+
+    // AC-019: search_patterns() returns required first, then scored, in each
+    // category's own preserved order; excluded never appears; ordering is by
+    // category, not by original input position.
+    #[test]
+    fn search_patterns_required_then_scored_excludes_excluded() {
+        let terms = vec![
+            term(Modifier::Optional, "s0"),   // idx 0
+            term(Modifier::Required, "r0"),   // idx 1
+            term(Modifier::Excluded, "e0"),   // idx 2
+        ];
+        let qp = QueryPlan::from_terms(terms);
+        // required = [1], scored = [0] -- required's pattern first despite
+        // appearing second in the original input.
+        assert_eq!(qp.search_patterns(), vec!["r0", "s0"]);
+    }
+
+    #[test]
+    fn search_patterns_preserves_each_categorys_own_relative_order() {
+        let terms = vec![
+            term(Modifier::Required, "r0"),
+            term(Modifier::Optional, "s0"),
+            term(Modifier::Required, "r1"),
+            term(Modifier::Optional, "s1"),
+        ];
+        let qp = QueryPlan::from_terms(terms);
+        assert_eq!(qp.search_patterns(), vec!["r0", "r1", "s0", "s1"]);
+    }
 }
