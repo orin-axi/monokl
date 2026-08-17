@@ -234,4 +234,18 @@ mod tests {
         let mut l = Lexer::new("\"abc");
         assert_eq!(l.next_token(), Token::QuotedString("abc".to_string()));
     }
+
+    // AC-020: multi-byte UTF-8 safety, exact traced example.
+    #[test]
+    fn word_consumes_multibyte_utf8_char_as_one_char_no_panic() {
+        let mut l = Lexer::new("+café");
+        assert_eq!(l.next_token(), Token::Plus);
+        assert_eq!(l.next_token(), Token::Word("café".to_string()));
+    }
+
+    #[test]
+    fn quoted_consumes_multibyte_utf8_chars_no_panic() {
+        let mut l = Lexer::new("\"日本語\"");
+        assert_eq!(l.next_token(), Token::QuotedString("日本語".to_string()));
+    }
 }
