@@ -288,4 +288,13 @@ mod tests {
         }
         assert_eq!(err.to_string(), "query has too many terms: 65 > 64");
     }
+
+    // AC-015: no regex validity check at this layer -- an invalid pattern parses fine.
+    #[test]
+    fn invalid_regex_syntax_still_parses_successfully_unvalidated() {
+        let terms = parse("regex:(unclosed").unwrap();
+        assert_eq!(terms.len(), 1);
+        assert!(terms[0].is_regex);
+        assert_eq!(terms[0].pattern, "(unclosed");
+    }
 }
