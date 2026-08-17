@@ -124,4 +124,13 @@ mod tests {
         let qp = QueryPlan::from_terms(terms);
         assert_eq!(qp.search_patterns(), vec!["r0", "r1", "s0", "s1"]);
     }
+
+    // AC-022: directly-constructed QueryPlan with an out-of-bounds index
+    // panics in search_patterns() rather than erroring or returning empty.
+    #[test]
+    #[should_panic]
+    fn search_patterns_panics_on_out_of_bounds_index_in_directly_constructed_plan() {
+        let qp = QueryPlan { terms: vec![], required: vec![5], excluded: vec![], scored: vec![] };
+        let _ = qp.search_patterns();
+    }
 }
