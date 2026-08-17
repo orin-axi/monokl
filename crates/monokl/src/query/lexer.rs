@@ -184,4 +184,23 @@ mod tests {
         assert_eq!(l.next_token(), Token::Word("foo".to_string()));
         assert_eq!(l.next_token(), Token::Word("bar".to_string()));
     }
+
+    // AC-006: read_quoted's single-escape rule and silent EOF tolerance.
+    // Example 1: quote f o o quote -> "foo", 3-char payload.
+    #[test]
+    fn quoted_basic_no_backslash() {
+        let mut l = Lexer::new("\"foo\"");
+        assert_eq!(l.next_token(), Token::QuotedString("foo".to_string()));
+    }
+
+    // Example 2: quote a backslash quote b quote -> "a\"b" (escaped quote, 3-char payload).
+    #[test]
+    fn quoted_escaped_quote_appended_literally_does_not_terminate() {
+        let mut l = Lexer::new("\"a\\\"b\"");
+        let tok = l.next_token();
+        assert_eq!(tok, Token::QuotedString("a\"b".to_string()));
+        if let Token::QuotedString(s) = tok {
+            assert_eq!(s.chars().count(), 3);
+        }
+    }
 }
