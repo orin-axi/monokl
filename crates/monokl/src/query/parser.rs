@@ -115,4 +115,30 @@ mod tests {
         assert_eq!(t.pattern, "x");
         assert!(!t.is_regex);
     }
+
+    // AC-009: empty/whitespace-only (ASCII and Unicode) input short-circuits before any Lexer exists.
+    #[test]
+    fn empty_and_ascii_whitespace_input_returns_empty_vec() {
+        assert!(parse("").unwrap().is_empty());
+        assert!(parse("   \t\n  ").unwrap().is_empty());
+    }
+
+    #[test]
+    fn nbsp_only_input_returns_empty_vec_via_unicode_trim() {
+        // U+00A0 NBSP is Unicode whitespace (str::trim), so trim().is_empty() is true.
+        let terms = parse("\u{00A0}").unwrap();
+        assert!(terms.is_empty());
+    }
+
+    #[test]
+    fn nbsp_prefixed_word_is_not_trimmed_away_and_lexer_keeps_the_nbsp() {
+        // trim() strips the leading NBSP only for the emptiness check; the Lexer
+        // still operates on the original untrimmed string, and its ASCII-only
+        // skip_whitespace() does NOT skip U+00A0, so it becomes part of the word.
+        let terms = parse("\u{00A0}foo").unwrap();
+        assert_eq!(terms.len(), 1);
+        assert_eq!(terms[0].modifier, Modifier::Optional);
+        assert!(!terms[0].is_regex);
+        assert_eq!(terms[0].pattern, "\u{00A0}foo");
+    }
 }
