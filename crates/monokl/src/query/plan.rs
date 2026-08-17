@@ -35,6 +35,33 @@ impl QueryPlan {
 mod tests {
     use super::*;
 
+    // AC-016: QueryPlan derives (Debug, Clone only) -- no serde derive.
+    // A plain generic bound check (assert_query_plan_derives below) can only
+    // prove Debug+Clone ARE implemented, never that Serialize/Deserialize are
+    // absent -- same const-specialization technique as lexer.rs's Token
+    // absence probes and parser.rs's ParsedTerm absence probes, applied here
+    // to serde::Serialize / serde::de::DeserializeOwned specifically
+    // (mirroring tests_types.rs's SerProbe/DeProbe pattern from SPEC-006/007/008).
+    struct SerProbe<T>(std::marker::PhantomData<T>);
+    trait NotSer { const IS: bool = false; }
+    impl<T> NotSer for SerProbe<T> {}
+    impl<T: serde::Serialize> SerProbe<T> { const IS: bool = true; }
+
+    struct DeProbe<T>(std::marker::PhantomData<T>);
+    trait NotDe { const IS: bool = false; }
+    impl<T> NotDe for DeProbe<T> {}
+    impl<'de, T: serde::de::DeserializeOwned> DeProbe<T> { const IS: bool = true; }
+
+    #[test]
+    fn query_plan_absence_of_serde_derive_pinned() {
+        assert!(!SerProbe::<QueryPlan>::IS);
+        assert!(!DeProbe::<QueryPlan>::IS);
+        // Positive control (proves the probes themselves aren't just always
+        // false): usize is Serialize + DeserializeOwned.
+        assert!(SerProbe::<usize>::IS);
+        assert!(DeProbe::<usize>::IS);
+    }
+
     // AC-016: QueryPlan derives (Debug, Clone only) + all 4 fields pub.
     fn assert_query_plan_derives<T: std::fmt::Debug + Clone>() {}
     #[test]
@@ -128,7 +155,7 @@ mod tests {
     // AC-022: directly-constructed QueryPlan with an out-of-bounds index
     // panics in search_patterns() rather than erroring or returning empty.
     #[test]
-    #[should_panic]
+    #[should_panic(expected = "index out of bounds")]
     fn search_patterns_panics_on_out_of_bounds_index_in_directly_constructed_plan() {
         let qp = QueryPlan { terms: vec![], required: vec![5], excluded: vec![], scored: vec![] };
         let _ = qp.search_patterns();

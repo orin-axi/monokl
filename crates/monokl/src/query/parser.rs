@@ -102,6 +102,31 @@ mod tests {
     // AC-008: ParsedTerm derives (Debug, Clone only) + fields are pub (checked by direct access).
     fn assert_parsed_term_derives<T: std::fmt::Debug + Clone>() {}
 
+    // AC-008: absence of PartialEq/Eq on ParsedTerm. Same const-specialization
+    // technique as lexer.rs's Token absence probes (this project's established
+    // fix for the "a bound check can only prove presence" gap, per
+    // tests_types.rs's SPEC-006/007/008 PartialEqProbe/EqProbe pattern).
+    struct PartialEqProbe<T>(std::marker::PhantomData<T>);
+    trait NotPartialEq { const IS: bool = false; }
+    impl<T> NotPartialEq for PartialEqProbe<T> {}
+    impl<T: PartialEq> PartialEqProbe<T> { const IS: bool = true; }
+
+    struct EqProbe<T>(std::marker::PhantomData<T>);
+    trait NotEq { const IS: bool = false; }
+    impl<T> NotEq for EqProbe<T> {}
+    impl<T: Eq> EqProbe<T> { const IS: bool = true; }
+
+    #[test]
+    fn parsed_term_absence_of_partialeq_and_eq_pinned() {
+        assert!(!PartialEqProbe::<ParsedTerm>::IS);
+        assert!(!EqProbe::<ParsedTerm>::IS);
+        // Positive control (proves the probes themselves aren't just always
+        // false): Modifier, declared 2 lines above ParsedTerm in this same
+        // file, DOES derive PartialEq + Eq.
+        assert!(PartialEqProbe::<Modifier>::IS);
+        assert!(EqProbe::<Modifier>::IS);
+    }
+
     #[test]
     fn modifier_and_parsed_term_shapes() {
         assert_modifier_derives::<Modifier>();
@@ -287,6 +312,29 @@ mod tests {
             other => panic!("expected TooManyTerms, got {other:?}"),
         }
         assert_eq!(err.to_string(), "query has too many terms: 65 > 64");
+    }
+
+    // AC-014: the LIMIT check runs only AFTER the main token-consuming loop
+    // has fully completed, using the TRUE final term count -- not a check
+    // inside the loop capped at some smaller number once the threshold is
+    // crossed. A 64/65-boundary test alone can't distinguish "checked after
+    // the loop with the true count" from "checked inside the loop, capped at
+    // 65, then bailing early" -- both produce identical results at exactly
+    // 64 or 65 terms. Parsing ~100 terms and asserting `count == 100` (not
+    // 65, and not any other capped value) is the only way to observe that
+    // every term was actually parsed before the check ran.
+    #[test]
+    fn limit_check_runs_after_full_loop_with_true_total_count_not_capped() {
+        let input: Vec<String> = (0..100).map(|i| format!("w{i}")).collect();
+        let err = parse(&input.join(" ")).unwrap_err();
+        match err {
+            MonoklError::TooManyTerms { count, limit } => {
+                assert_eq!(count, 100);
+                assert_eq!(limit, 64);
+            }
+            other => panic!("expected TooManyTerms, got {other:?}"),
+        }
+        assert_eq!(err.to_string(), "query has too many terms: 100 > 64");
     }
 
     // AC-015: no regex validity check at this layer -- an invalid pattern parses fine.

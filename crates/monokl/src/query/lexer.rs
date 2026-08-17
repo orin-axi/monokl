@@ -111,6 +111,117 @@ mod tests {
         assert_ne!(Token::Plus, Token::Minus);
     }
 
+    // AC-001: absence of Eq/Hash/PartialOrd/Ord. A plain generic bound-check
+    // function (like assert_token_derives above) can only prove a trait IS
+    // implemented, never that it is absent -- this project's own
+    // tests_types.rs (SPEC-006/007/008) establishes the fix: a const-
+    // specialization probe pair per trait, where the "not implemented" const
+    // is the default (false) and only overridden to true by a blanket impl
+    // gated on the trait bound. If the probed type doesn't implement the
+    // trait, only the default (false) impl applies.
+    struct EqProbe<T>(std::marker::PhantomData<T>);
+    trait NotEq { const IS: bool = false; }
+    impl<T> NotEq for EqProbe<T> {}
+    impl<T: Eq> EqProbe<T> { const IS: bool = true; }
+
+    struct HashProbe<T>(std::marker::PhantomData<T>);
+    trait NotHash { const IS: bool = false; }
+    impl<T> NotHash for HashProbe<T> {}
+    impl<T: std::hash::Hash> HashProbe<T> { const IS: bool = true; }
+
+    struct PartialOrdProbe<T>(std::marker::PhantomData<T>);
+    trait NotPartialOrd { const IS: bool = false; }
+    impl<T> NotPartialOrd for PartialOrdProbe<T> {}
+    impl<T: PartialOrd> PartialOrdProbe<T> { const IS: bool = true; }
+
+    struct OrdProbe<T>(std::marker::PhantomData<T>);
+    trait NotOrd { const IS: bool = false; }
+    impl<T> NotOrd for OrdProbe<T> {}
+    impl<T: Ord> OrdProbe<T> { const IS: bool = true; }
+
+    #[test]
+    fn token_absence_of_eq_hash_partialord_ord_pinned() {
+        assert!(!EqProbe::<Token>::IS);
+        assert!(!HashProbe::<Token>::IS);
+        assert!(!PartialOrdProbe::<Token>::IS);
+        assert!(!OrdProbe::<Token>::IS);
+        // Positive controls (prove each probe itself isn't just always false).
+        assert!(EqProbe::<usize>::IS);
+        assert!(HashProbe::<usize>::IS);
+        assert!(PartialOrdProbe::<usize>::IS);
+        assert!(OrdProbe::<usize>::IS);
+    }
+
+    // AC-002: Lexer<'a> carries NO derive attribute of any kind. This is an
+    // absence-of-any-attribute-at-all claim, not a specific-trait claim a
+    // const-specialization probe can address (there's no single trait to
+    // probe for "has some derive"), so it's pinned via structural source
+    // inspection instead: read this file's own verbatim source and confirm
+    // no `#[derive(` attribute appears directly above `pub struct Lexer`,
+    // and that neither of its 2 fields (input, pos) is declared `pub`.
+    #[test]
+    fn lexer_struct_has_no_derive_and_private_fields_structural() {
+        // NB: `include_str!` pulls in this very test file, including this
+        // test's own source text -- so the substrings searched for below
+        // must never be spelled out literally in this function's own code
+        // (e.g. as a field-name needle), or the test would trivially match
+        // itself. Field names are assembled at runtime via `format!` to
+        // avoid that self-reference trap, and the search is scoped to the
+        // struct's own declaration block (not the whole file) so the test
+        // module further down can't be accidentally scanned either.
+        let src = include_str!("lexer.rs");
+        let decl_start = src
+            .find("pub struct Lexer<'a>")
+            .unwrap_or_else(|| panic!("`pub struct Lexer<'a>` not found in lexer.rs"));
+        let preceding = &src[..decl_start];
+        // The nearest blank line before the struct decl is a safe boundary:
+        // this codebase's convention (see Token above) places a derive
+        // attribute on the line immediately above its struct/enum, with no
+        // blank line in between -- so a window starting after the last blank
+        // line captures any derive attribute meant for THIS struct without
+        // reaching back into a prior, unrelated item's own derive.
+        let window_start = preceding.rfind("\n\n").map(|p| p + 2).unwrap_or(0);
+        let window = &preceding[window_start..decl_start];
+        assert!(
+            !window.contains("#[derive("),
+            "found unexpected #[derive(...)] immediately before `pub struct Lexer`: {window:?}"
+        );
+
+        let open = src[decl_start..].find('{').unwrap() + decl_start;
+        let close = src[open..].find('}').unwrap() + open;
+        let field_block = &src[open..=close];
+        for field in ["input", "pos"] {
+            let pub_needle = format!("pub {field}:");
+            assert!(
+                !field_block.contains(&pub_needle),
+                "Lexer.{field} must be private (AC-002), found `{pub_needle}` in the struct body"
+            );
+        }
+    }
+
+    // AC-003: Lexer's public API surface is exactly `new` and `next_token`;
+    // its 6 other methods (remaining, peek, advance, skip_whitespace,
+    // read_word, read_quoted) are all private. Structural source inspection,
+    // since a compile-time bound check has no way to assert a method is NOT
+    // callable from outside the module.
+    #[test]
+    fn lexer_helper_methods_are_private_structural() {
+        let src = include_str!("lexer.rs");
+        for name in ["remaining", "peek", "advance", "skip_whitespace", "read_word", "read_quoted"] {
+            assert!(
+                src.contains(&format!("fn {name}")),
+                "helper method `{name}` not found in lexer.rs"
+            );
+            assert!(
+                !src.contains(&format!("pub fn {name}")),
+                "helper method `{name}` is unexpectedly `pub` -- AC-003 requires it private"
+            );
+        }
+        // Positive control: `new` and `next_token` ARE pub.
+        assert!(src.contains("pub fn new"));
+        assert!(src.contains("pub fn next_token"));
+    }
+
     // AC-004: dispatch order for each first-character case, including exact byte consumption.
     #[test]
     fn next_token_eof_on_empty_input() {
