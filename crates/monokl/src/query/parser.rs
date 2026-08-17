@@ -194,4 +194,20 @@ mod tests {
         assert!(!terms[0].is_regex);
         assert_eq!(terms[0].pattern, regex::escape("foo"));
     }
+
+    // AC-007: whitespace between a modifier and its term is irrelevant.
+    #[test]
+    fn plus_and_minus_are_whitespace_insensitive_before_their_term() {
+        let with_space = parse("+ foo").unwrap();
+        let without_space = parse("+foo").unwrap();
+        assert_eq!(with_space.len(), 1);
+        assert_eq!(with_space[0].modifier, without_space[0].modifier);
+        assert_eq!(with_space[0].pattern, without_space[0].pattern);
+        assert_eq!(with_space[0].is_regex, without_space[0].is_regex);
+
+        let with_space_m = parse("- foo").unwrap();
+        let without_space_m = parse("-foo").unwrap();
+        assert_eq!(with_space_m[0].modifier, without_space_m[0].modifier);
+        assert_eq!(with_space_m[0].pattern, without_space_m[0].pattern);
+    }
 }
