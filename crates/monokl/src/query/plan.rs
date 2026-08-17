@@ -83,4 +83,17 @@ mod tests {
         all.sort_unstable();
         assert_eq!(all, vec![0, 1, 2, 3, 4, 5]);
     }
+
+    // AC-018: is_empty() checks total term count, not required/scored specifically.
+    #[test]
+    fn is_empty_true_only_when_terms_is_fully_empty() {
+        let qp = QueryPlan::from_terms(Vec::new());
+        assert!(qp.is_empty());
+
+        // Exclusion-only query: zero Required/Optional terms, but is_empty()
+        // still reports false because it checks total term count.
+        let excl_only = QueryPlan::from_terms(vec![term(Modifier::Excluded, "e0"), term(Modifier::Excluded, "e1")]);
+        assert!(!excl_only.is_empty());
+        assert!(excl_only.search_patterns().is_empty());
+    }
 }
