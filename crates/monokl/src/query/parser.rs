@@ -127,6 +127,36 @@ mod tests {
         assert!(EqProbe::<Modifier>::IS);
     }
 
+    // AC-008: Modifier's exact 3-variant set, with no room for a 4th. Unlike
+    // Token (whose variant count is pinned "for free" by parse()'s own
+    // exhaustive match), Modifier is only ever compared with `==` in this
+    // codebase, so it needs its own exhaustive-match-with-no-wildcard-arm to
+    // make an added variant a compile error, plus discriminant assertions
+    // to pin declaration order (Modifier is fieldless, so its order IS
+    // wire/discriminant-observable and testable, unlike Token).
+    #[test]
+    fn modifier_exhaustive_match_admits_exactly_three_variants() {
+        fn describe(m: &Modifier) -> &'static str {
+            match m {
+                Modifier::Required => "required",
+                Modifier::Excluded => "excluded",
+                Modifier::Optional => "optional",
+                // No wildcard arm: a 4th variant added to Modifier fails to
+                // compile here.
+            }
+        }
+        assert_eq!(describe(&Modifier::Required), "required");
+        assert_eq!(describe(&Modifier::Excluded), "excluded");
+        assert_eq!(describe(&Modifier::Optional), "optional");
+    }
+
+    #[test]
+    fn modifier_discriminants_pinned_in_declaration_order() {
+        assert_eq!(Modifier::Required as isize, 0);
+        assert_eq!(Modifier::Excluded as isize, 1);
+        assert_eq!(Modifier::Optional as isize, 2);
+    }
+
     #[test]
     fn modifier_and_parsed_term_shapes() {
         assert_modifier_derives::<Modifier>();
@@ -258,6 +288,19 @@ mod tests {
     #[test]
     fn bare_trailing_regex_prefix_produces_zero_terms() {
         assert!(parse("regex:").unwrap().is_empty());
+    }
+
+    // AC-004: the "regex:" prefix match is case-sensitive end-to-end through
+    // the parser -- "REGEX:foo" is lexed as an ordinary Word and therefore
+    // parses as a single Optional, non-regex, escaped-literal term on the
+    // full "REGEX:foo" text, not a regex term on "foo".
+    #[test]
+    fn uppercase_regex_prefix_is_not_special_cased_by_the_parser() {
+        let terms = parse("REGEX:foo").unwrap();
+        assert_eq!(terms.len(), 1);
+        assert_eq!(terms[0].modifier, Modifier::Optional);
+        assert!(!terms[0].is_regex);
+        assert_eq!(terms[0].pattern, regex::escape("REGEX:foo"));
     }
 
     #[test]

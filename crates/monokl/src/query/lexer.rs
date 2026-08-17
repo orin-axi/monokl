@@ -191,10 +191,20 @@ mod tests {
         let close = src[open..].find('}').unwrap() + open;
         let field_block = &src[open..=close];
         for field in ["input", "pos"] {
-            let pub_needle = format!("pub {field}:");
+            // Line-scoped prefix check (not a `pub {field}:` substring search)
+            // so `pub(crate) {field}:` and `pub(super) {field}:` are caught
+            // too, not just the bare `pub {field}:` spelling -- a private
+            // field's declaration line starts, after trimming, directly with
+            // `{field}:`; any visibility modifier prefixes it.
+            let needle = format!("{field}:");
+            let idx = field_block.find(&needle)
+                .unwrap_or_else(|| panic!("field `{field}` not found in Lexer struct body"));
+            let line_start = field_block[..idx].rfind('\n').map(|p| p + 1).unwrap_or(0);
+            let line_end = field_block[idx..].find('\n').map(|p| idx + p).unwrap_or(field_block.len());
+            let line = field_block[line_start..line_end].trim_start();
             assert!(
-                !field_block.contains(&pub_needle),
-                "Lexer.{field} must be private (AC-002), found `{pub_needle}` in the struct body"
+                line.starts_with(&needle),
+                "Lexer.{field} must be private (AC-002), found line {line:?} not starting with `{needle}` -- a pub/pub(crate)/pub(super) modifier would prefix it"
             );
         }
     }
@@ -208,13 +218,21 @@ mod tests {
     fn lexer_helper_methods_are_private_structural() {
         let src = include_str!("lexer.rs");
         for name in ["remaining", "peek", "advance", "skip_whitespace", "read_word", "read_quoted"] {
+            // Line-scoped prefix check (not a `pub fn {name}` substring
+            // search) so `pub(crate) fn {name}` and `pub(super) fn {name}`
+            // are caught too, not just the bare `pub fn {name}` spelling --
+            // a truly-private method's declaration line starts, after
+            // trimming, directly with `fn `; any visibility modifier
+            // prefixes it.
+            let needle = format!("fn {name}");
+            let idx = src.find(&needle)
+                .unwrap_or_else(|| panic!("helper method `{name}` not found in lexer.rs"));
+            let line_start = src[..idx].rfind('\n').map(|p| p + 1).unwrap_or(0);
+            let line_end = src[idx..].find('\n').map(|p| idx + p).unwrap_or(src.len());
+            let line = src[line_start..line_end].trim_start();
             assert!(
-                src.contains(&format!("fn {name}")),
-                "helper method `{name}` not found in lexer.rs"
-            );
-            assert!(
-                !src.contains(&format!("pub fn {name}")),
-                "helper method `{name}` is unexpectedly `pub` -- AC-003 requires it private"
+                line.starts_with("fn "),
+                "helper method `{name}` is not declared with a bare `fn ` prefix (found line {line:?}) -- AC-003 requires it private, not pub/pub(crate)/pub(super)"
             );
         }
         // Positive control: `new` and `next_token` ARE pub.
@@ -265,6 +283,20 @@ mod tests {
     fn next_token_word_fallback_for_non_special_non_regex_input() {
         let mut l = Lexer::new("hello");
         assert_eq!(l.next_token(), Token::Word("hello".to_string()));
+    }
+
+    // AC-004: the "regex:" prefix check is case-sensitive -- "REGEX:"/"Regex:"
+    // are ordinary Word content, not RegexPrefix.
+    #[test]
+    fn next_token_regex_prefix_check_is_case_sensitive_uppercase() {
+        let mut l = Lexer::new("REGEX:foo");
+        assert_eq!(l.next_token(), Token::Word("REGEX:foo".to_string()));
+    }
+
+    #[test]
+    fn next_token_regex_prefix_check_is_case_sensitive_mixed_case() {
+        let mut l = Lexer::new("Regex:foo");
+        assert_eq!(l.next_token(), Token::Word("Regex:foo".to_string()));
     }
 
     #[test]
