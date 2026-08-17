@@ -210,4 +210,39 @@ mod tests {
         assert_eq!(with_space_m[0].modifier, without_space_m[0].modifier);
         assert_eq!(with_space_m[0].pattern, without_space_m[0].pattern);
     }
+
+    // AC-011: bare RegexPrefix handling, including the "regex: -foo" full trace
+    // and bare trailing "regex:" producing zero terms.
+    #[test]
+    fn regex_prefix_word_produces_optional_regex_term_raw_pattern() {
+        let terms = parse("regex:fo.o").unwrap();
+        assert_eq!(terms.len(), 1);
+        assert_eq!(terms[0].modifier, Modifier::Optional);
+        assert!(terms[0].is_regex);
+        assert_eq!(terms[0].pattern, "fo.o"); // raw, NOT regex::escape'd
+    }
+
+    #[test]
+    fn regex_prefix_quoted_produces_optional_regex_term_raw_pattern() {
+        let terms = parse("regex:\"a.b\"").unwrap();
+        assert_eq!(terms.len(), 1);
+        assert!(terms[0].is_regex);
+        assert_eq!(terms[0].pattern, "a.b");
+    }
+
+    #[test]
+    fn bare_trailing_regex_prefix_produces_zero_terms() {
+        assert!(parse("regex:").unwrap().is_empty());
+    }
+
+    #[test]
+    fn regex_prefix_followed_by_minus_swallows_the_minus_and_reprocesses_foo() {
+        // Fully traced per AC-011: "regex: -foo" -> exactly one Optional, non-regex
+        // ParsedTerm on "foo"; the Minus token is consumed as pattern_tok and discarded.
+        let terms = parse("regex: -foo").unwrap();
+        assert_eq!(terms.len(), 1);
+        assert_eq!(terms[0].modifier, Modifier::Optional);
+        assert!(!terms[0].is_regex);
+        assert_eq!(terms[0].pattern, "foo");
+    }
 }
