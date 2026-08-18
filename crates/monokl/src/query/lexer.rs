@@ -203,6 +203,88 @@ mod tests {
         }
     }
 
+    // AC-002: Lexer<'a> implements none of Debug/Clone/PartialEq/Eq/Hash/
+    // PartialOrd/Ord/Default/Copy. The structural text-window check below
+    // (lexer_struct_has_no_derive_and_private_fields_structural) only scans
+    // the source window immediately preceding `pub struct Lexer` up to the
+    // last blank line -- a `#[derive(Debug, Clone)]` placed on its own line
+    // with a blank line separating it from the struct (legal Rust) would
+    // slip past that window undetected. AC-002 is purely a trait-absence
+    // claim, which this codebase's established const-specialization probe
+    // technique (see Token's Eq/Hash/PartialOrd/Ord absence probes above,
+    // and parser.rs's ParsedTerm probes) proves directly at the type level,
+    // regardless of where in the source a derive attribute is placed --
+    // this closes that blind spot; the structural check below still covers
+    // its own private-field-detection role.
+    struct LexerDebugProbe<T>(std::marker::PhantomData<T>);
+    trait NotLexerDebug { const IS: bool = false; }
+    impl<T> NotLexerDebug for LexerDebugProbe<T> {}
+    impl<T: std::fmt::Debug> LexerDebugProbe<T> { const IS: bool = true; }
+
+    struct LexerCloneProbe<T>(std::marker::PhantomData<T>);
+    trait NotLexerClone { const IS: bool = false; }
+    impl<T> NotLexerClone for LexerCloneProbe<T> {}
+    impl<T: Clone> LexerCloneProbe<T> { const IS: bool = true; }
+
+    struct LexerPartialEqProbe<T>(std::marker::PhantomData<T>);
+    trait NotLexerPartialEq { const IS: bool = false; }
+    impl<T> NotLexerPartialEq for LexerPartialEqProbe<T> {}
+    impl<T: PartialEq> LexerPartialEqProbe<T> { const IS: bool = true; }
+
+    struct LexerEqProbe<T>(std::marker::PhantomData<T>);
+    trait NotLexerEq { const IS: bool = false; }
+    impl<T> NotLexerEq for LexerEqProbe<T> {}
+    impl<T: Eq> LexerEqProbe<T> { const IS: bool = true; }
+
+    struct LexerHashProbe<T>(std::marker::PhantomData<T>);
+    trait NotLexerHash { const IS: bool = false; }
+    impl<T> NotLexerHash for LexerHashProbe<T> {}
+    impl<T: std::hash::Hash> LexerHashProbe<T> { const IS: bool = true; }
+
+    struct LexerPartialOrdProbe<T>(std::marker::PhantomData<T>);
+    trait NotLexerPartialOrd { const IS: bool = false; }
+    impl<T> NotLexerPartialOrd for LexerPartialOrdProbe<T> {}
+    impl<T: PartialOrd> LexerPartialOrdProbe<T> { const IS: bool = true; }
+
+    struct LexerOrdProbe<T>(std::marker::PhantomData<T>);
+    trait NotLexerOrd { const IS: bool = false; }
+    impl<T> NotLexerOrd for LexerOrdProbe<T> {}
+    impl<T: Ord> LexerOrdProbe<T> { const IS: bool = true; }
+
+    struct LexerDefaultProbe<T>(std::marker::PhantomData<T>);
+    trait NotLexerDefault { const IS: bool = false; }
+    impl<T> NotLexerDefault for LexerDefaultProbe<T> {}
+    impl<T: Default> LexerDefaultProbe<T> { const IS: bool = true; }
+
+    struct LexerCopyProbe<T>(std::marker::PhantomData<T>);
+    trait NotLexerCopy { const IS: bool = false; }
+    impl<T> NotLexerCopy for LexerCopyProbe<T> {}
+    impl<T: Copy> LexerCopyProbe<T> { const IS: bool = true; }
+
+    #[test]
+    fn lexer_implements_none_of_the_common_derivable_traits_pinned() {
+        assert!(!LexerDebugProbe::<Lexer<'static>>::IS);
+        assert!(!LexerCloneProbe::<Lexer<'static>>::IS);
+        assert!(!LexerPartialEqProbe::<Lexer<'static>>::IS);
+        assert!(!LexerEqProbe::<Lexer<'static>>::IS);
+        assert!(!LexerHashProbe::<Lexer<'static>>::IS);
+        assert!(!LexerPartialOrdProbe::<Lexer<'static>>::IS);
+        assert!(!LexerOrdProbe::<Lexer<'static>>::IS);
+        assert!(!LexerDefaultProbe::<Lexer<'static>>::IS);
+        assert!(!LexerCopyProbe::<Lexer<'static>>::IS);
+        // Positive controls (prove each probe itself isn't just always
+        // false): usize implements all 9 of these traits.
+        assert!(LexerDebugProbe::<usize>::IS);
+        assert!(LexerCloneProbe::<usize>::IS);
+        assert!(LexerPartialEqProbe::<usize>::IS);
+        assert!(LexerEqProbe::<usize>::IS);
+        assert!(LexerHashProbe::<usize>::IS);
+        assert!(LexerPartialOrdProbe::<usize>::IS);
+        assert!(LexerOrdProbe::<usize>::IS);
+        assert!(LexerDefaultProbe::<usize>::IS);
+        assert!(LexerCopyProbe::<usize>::IS);
+    }
+
     // AC-002: Lexer<'a> carries NO derive attribute of any kind. This is an
     // absence-of-any-attribute-at-all claim, not a specific-trait claim a
     // const-specialization probe can address (there's no single trait to
@@ -301,9 +383,10 @@ mod tests {
     // carrying an extra `pub fn`, since a first-match-only search would
     // never see it, or (c) a `pub(crate) fn` added to the existing block,
     // since a `starts_with("pub fn ")` filter doesn't match `pub(crate) fn`.
-    // This test therefore: iterates every occurrence of the impl-block
-    // declaration via `match_indices` (not just the first), brace-matches
-    // each occurrence independently via brace-depth matching (the naive
+    // This test therefore: iterates every line in the file looking for an
+    // impl-block declaration for Lexer (not just the first, and not tied to
+    // one exact lifetime spelling -- see below), brace-matches each
+    // occurrence independently via brace-depth matching (the naive
     // first-`}`-after-`{` approach used elsewhere in this file for the
     // struct/field block doesn't work here, since function bodies inside the
     // impl block contain their own nested braces) to find its own extent,
@@ -317,16 +400,38 @@ mod tests {
     // one of those two exact strings makes the assertion fail, since it
     // either doesn't match "pub fn ..." at all or shows up as an unwanted
     // extra element.
+    //
+    // Impl-block detection is spelling-variant-tolerant: rather than
+    // matching one literal string like `"impl<'a> Lexer<'a> {"`, this scans
+    // every line whose trimmed text starts with "impl", contains "Lexer",
+    // and ends with "{" -- so `impl<'b> Lexer<'b> {` or the
+    // modern-idiomatic `impl Lexer<'_> {` (both legal, semantically
+    // identical ways to write an impl block for this same type) are caught
+    // too, not just the one lifetime spelling this file happens to use
+    // today. A second impl block added under any such spelling, carrying an
+    // extra `pub fn`, is therefore still detected.
     #[test]
     fn lexer_exactly_two_public_methods_structural() {
         let src = include_str!("lexer.rs");
-        let impl_decl = "impl<'a> Lexer<'a> {";
 
         let mut pub_fn_lines: Vec<String> = Vec::new();
         let mut occurrences = 0;
-        for (decl_start, _) in src.match_indices(impl_decl) {
+        let mut byte_offset = 0usize;
+        for line in src.split_inclusive('\n') {
+            let trimmed = line.trim();
+            let is_lexer_impl_decl =
+                trimmed.starts_with("impl") && trimmed.contains("Lexer") && trimmed.ends_with('{');
+            let line_len = line.len();
+            if !is_lexer_impl_decl {
+                byte_offset += line_len;
+                continue;
+            }
             occurrences += 1;
-            let open = decl_start + impl_decl.len() - 1;
+            let brace_rel = line.rfind('{').unwrap_or_else(|| {
+                panic!("line matched as an impl-block decl but has no `{{`: {line:?}")
+            });
+            let open = byte_offset + brace_rel;
+            byte_offset += line_len;
             debug_assert_eq!(&src[open..open + 1], "{");
 
             let mut depth: i32 = 0;
@@ -345,7 +450,7 @@ mod tests {
                 }
             }
             let close = close.unwrap_or_else(|| {
-                panic!("no matching close brace found for `{impl_decl}` block at byte {decl_start}")
+                panic!("no matching close brace found for impl block starting at byte {open}")
             });
             let block = &src[open..=close];
 
@@ -360,7 +465,7 @@ mod tests {
                 }
             }
         }
-        assert!(occurrences > 0, "`{impl_decl}` not found in lexer.rs");
+        assert!(occurrences > 0, "no `impl ... Lexer ... {{` block found in lexer.rs");
 
         assert_eq!(pub_fn_lines, vec!["pub fn new".to_string(), "pub fn next_token".to_string()]);
     }
@@ -451,6 +556,20 @@ mod tests {
         let mut l = Lexer::new("foo bar");
         assert_eq!(l.next_token(), Token::Word("foo".to_string()));
         assert_eq!(l.next_token(), Token::Word("bar".to_string()));
+    }
+
+    // AC-005: read_word's stopping predicate is the real `is_ascii_whitespace()`,
+    // not a narrower one (e.g. plain space, or space+tab only) -- every other
+    // read_word test in this file uses a plain space or no separator at all, so
+    // none of them can distinguish the real predicate from a narrower mutant.
+    #[test]
+    fn word_stops_at_every_ascii_whitespace_kind_not_just_space() {
+        let mut l = Lexer::new("foo\tbar\nbaz\rqux");
+        assert_eq!(l.next_token(), Token::Word("foo".to_string()));
+        assert_eq!(l.next_token(), Token::Word("bar".to_string()));
+        assert_eq!(l.next_token(), Token::Word("baz".to_string()));
+        assert_eq!(l.next_token(), Token::Word("qux".to_string()));
+        assert_eq!(l.next_token(), Token::Eof);
     }
 
     // AC-006: read_quoted's single-escape rule and silent EOF tolerance.
