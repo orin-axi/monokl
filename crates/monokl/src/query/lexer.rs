@@ -152,6 +152,57 @@ mod tests {
         assert!(OrdProbe::<usize>::IS);
     }
 
+    // AC-001: absence of serde Serialize/Deserialize on Token. Same
+    // const-specialization technique as plan.rs's QueryPlan serde-absence
+    // probe (SPEC-006 AC-015 / SPEC-008 AC-002 precedent this criterion
+    // itself cites).
+    struct SerProbe<T>(std::marker::PhantomData<T>);
+    trait NotSer { const IS: bool = false; }
+    impl<T> NotSer for SerProbe<T> {}
+    impl<T: serde::Serialize> SerProbe<T> { const IS: bool = true; }
+
+    struct DeProbe<T>(std::marker::PhantomData<T>);
+    trait NotDe { const IS: bool = false; }
+    impl<T> NotDe for DeProbe<T> {}
+    impl<'de, T: serde::de::DeserializeOwned> DeProbe<T> { const IS: bool = true; }
+
+    #[test]
+    fn token_absence_of_serde_derive_pinned() {
+        assert!(!SerProbe::<Token>::IS);
+        assert!(!DeProbe::<Token>::IS);
+        // Positive control (proves the probes themselves aren't just always
+        // false): usize is Serialize + DeserializeOwned.
+        assert!(SerProbe::<usize>::IS);
+        assert!(DeProbe::<usize>::IS);
+    }
+
+    // AC-001: Token's exactly-6-variants declaration order (Plus, Minus,
+    // RegexPrefix, QuotedString, Word, Eof), pinned via structural source
+    // inspection -- a fieldless-comparison test can't observe enum variant
+    // declaration ORDER for a data-carrying enum (no discriminant cast is
+    // possible once any variant holds a payload), so this mirrors mod.rs's
+    // existing line-order-pinning technique instead: read this file's own
+    // verbatim source and assert each variant name appears at a strictly
+    // increasing text position within Token's own declaration block.
+    #[test]
+    fn token_variant_declaration_order_structural() {
+        let src = include_str!("lexer.rs");
+        let decl_start = src.find("pub enum Token").unwrap_or_else(|| panic!("`pub enum Token` not found in lexer.rs"));
+        let open = src[decl_start..].find('{').unwrap() + decl_start;
+        let close = src[open..].find('}').unwrap() + open;
+        let block = &src[open..=close];
+
+        let variants = ["Plus", "Minus", "RegexPrefix", "QuotedString", "Word", "Eof"];
+        let mut last_pos: Option<usize> = None;
+        for v in variants {
+            let pos = block.find(v).unwrap_or_else(|| panic!("variant `{v}` not found in Token enum body"));
+            if let Some(last) = last_pos {
+                assert!(pos > last, "variant `{v}` found out of the expected declaration order");
+            }
+            last_pos = Some(pos);
+        }
+    }
+
     // AC-002: Lexer<'a> carries NO derive attribute of any kind. This is an
     // absence-of-any-attribute-at-all claim, not a specific-trait claim a
     // const-specialization probe can address (there's no single trait to

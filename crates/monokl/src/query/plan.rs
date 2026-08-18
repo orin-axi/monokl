@@ -76,6 +76,54 @@ mod tests {
         assert!(qp.scored.is_empty());
     }
 
+    // AC-016: QueryPlan's 4 fields are declared pub (not pub(crate)), pinned
+    // via structural source inspection -- mirrors lexer.rs's private-field
+    // check but in the public direction: asserts each field's declaration
+    // line starts with a bare `pub {field}:`, not `pub(crate) {field}:`
+    // (which a plain `contains("pub")` substring check would also satisfy).
+    #[test]
+    fn query_plan_fields_are_declared_pub_structural() {
+        let src = include_str!("plan.rs");
+        let decl_start = src.find("pub struct QueryPlan").unwrap_or_else(|| panic!("`pub struct QueryPlan` not found in plan.rs"));
+        let open = src[decl_start..].find('{').unwrap() + decl_start;
+        let close = src[open..].find('}').unwrap() + open;
+        let field_block = &src[open..=close];
+        for field in ["terms", "required", "excluded", "scored"] {
+            let needle = format!("{field}:");
+            let idx = field_block.find(&needle)
+                .unwrap_or_else(|| panic!("field `{field}` not found in QueryPlan struct body"));
+            let line_start = field_block[..idx].rfind('\n').map(|p| p + 1).unwrap_or(0);
+            let line_end = field_block[idx..].find('\n').map(|p| idx + p).unwrap_or(field_block.len());
+            let line = field_block[line_start..line_end].trim_start();
+            assert!(
+                line.starts_with(&format!("pub {field}:")),
+                "QueryPlan.{field} must be declared exactly `pub {field}:` (AC-016), found line {line:?}"
+            );
+        }
+    }
+
+    // AC-016: QueryPlan's 4 fields' declaration order (terms, required,
+    // excluded, scored), pinned via structural source inspection -- mirrors
+    // mod.rs's / lexer.rs's Token order-pinning technique.
+    #[test]
+    fn query_plan_field_declaration_order_structural() {
+        let src = include_str!("plan.rs");
+        let decl_start = src.find("pub struct QueryPlan").unwrap_or_else(|| panic!("`pub struct QueryPlan` not found in plan.rs"));
+        let open = src[decl_start..].find('{').unwrap() + decl_start;
+        let close = src[open..].find('}').unwrap() + open;
+        let block = &src[open..=close];
+
+        let fields = ["terms", "required", "excluded", "scored"];
+        let mut last_pos: Option<usize> = None;
+        for f in fields {
+            let pos = block.find(f).unwrap_or_else(|| panic!("field `{f}` not found in QueryPlan struct body"));
+            if let Some(last) = last_pos {
+                assert!(pos > last, "field `{f}` found out of the expected declaration order");
+            }
+            last_pos = Some(pos);
+        }
+    }
+
     #[test]
     fn from_terms_on_empty_vec_produces_all_empty_fields() {
         let qp = QueryPlan::from_terms(Vec::new());

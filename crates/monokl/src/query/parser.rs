@@ -127,6 +127,82 @@ mod tests {
         assert!(EqProbe::<Modifier>::IS);
     }
 
+    // AC-008: absence of serde Serialize/Deserialize on Modifier and
+    // ParsedTerm -- same const-specialization technique as lexer.rs's Token
+    // probe and plan.rs's QueryPlan probe (SPEC-006 AC-015 / SPEC-008 AC-002
+    // precedent).
+    struct SerProbe<T>(std::marker::PhantomData<T>);
+    trait NotSer { const IS: bool = false; }
+    impl<T> NotSer for SerProbe<T> {}
+    impl<T: serde::Serialize> SerProbe<T> { const IS: bool = true; }
+
+    struct DeProbe<T>(std::marker::PhantomData<T>);
+    trait NotDe { const IS: bool = false; }
+    impl<T> NotDe for DeProbe<T> {}
+    impl<'de, T: serde::de::DeserializeOwned> DeProbe<T> { const IS: bool = true; }
+
+    #[test]
+    fn modifier_and_parsed_term_absence_of_serde_derive_pinned() {
+        assert!(!SerProbe::<Modifier>::IS);
+        assert!(!DeProbe::<Modifier>::IS);
+        assert!(!SerProbe::<ParsedTerm>::IS);
+        assert!(!DeProbe::<ParsedTerm>::IS);
+        // Positive control (proves the probes themselves aren't just always
+        // false): usize is Serialize + DeserializeOwned.
+        assert!(SerProbe::<usize>::IS);
+        assert!(DeProbe::<usize>::IS);
+    }
+
+    // AC-008: ParsedTerm's 3 fields are declared pub (not pub(crate)),
+    // pinned via structural source inspection -- mirrors lexer.rs's private-
+    // field check (lexer_struct_has_no_derive_and_private_fields_structural)
+    // but in the public direction: asserts each field's declaration line
+    // starts with a bare `pub {field}:`, not `pub(crate) {field}:` (which a
+    // plain `contains("pub")` substring check would also satisfy).
+    #[test]
+    fn parsed_term_fields_are_declared_pub_structural() {
+        let src = include_str!("parser.rs");
+        let decl_start = src.find("pub struct ParsedTerm").unwrap_or_else(|| panic!("`pub struct ParsedTerm` not found in parser.rs"));
+        let open = src[decl_start..].find('{').unwrap() + decl_start;
+        let close = src[open..].find('}').unwrap() + open;
+        let field_block = &src[open..=close];
+        for field in ["modifier", "pattern", "is_regex"] {
+            let needle = format!("{field}:");
+            let idx = field_block.find(&needle)
+                .unwrap_or_else(|| panic!("field `{field}` not found in ParsedTerm struct body"));
+            let line_start = field_block[..idx].rfind('\n').map(|p| p + 1).unwrap_or(0);
+            let line_end = field_block[idx..].find('\n').map(|p| idx + p).unwrap_or(field_block.len());
+            let line = field_block[line_start..line_end].trim_start();
+            assert!(
+                line.starts_with(&format!("pub {field}:")),
+                "ParsedTerm.{field} must be declared exactly `pub {field}:` (AC-008), found line {line:?}"
+            );
+        }
+    }
+
+    // AC-008: ParsedTerm's 3 fields' declaration order (modifier, pattern,
+    // is_regex), pinned via structural source inspection -- ParsedTerm has
+    // no derive that makes field order wire-observable, so this mirrors
+    // mod.rs's / lexer.rs's Token order-pinning technique.
+    #[test]
+    fn parsed_term_field_declaration_order_structural() {
+        let src = include_str!("parser.rs");
+        let decl_start = src.find("pub struct ParsedTerm").unwrap_or_else(|| panic!("`pub struct ParsedTerm` not found in parser.rs"));
+        let open = src[decl_start..].find('{').unwrap() + decl_start;
+        let close = src[open..].find('}').unwrap() + open;
+        let block = &src[open..=close];
+
+        let fields = ["modifier", "pattern", "is_regex"];
+        let mut last_pos: Option<usize> = None;
+        for f in fields {
+            let pos = block.find(f).unwrap_or_else(|| panic!("field `{f}` not found in ParsedTerm struct body"));
+            if let Some(last) = last_pos {
+                assert!(pos > last, "field `{f}` found out of the expected declaration order");
+            }
+            last_pos = Some(pos);
+        }
+    }
+
     // AC-008: Modifier's exact 3-variant set, with no room for a 4th. Unlike
     // Token (whose variant count is pinned "for free" by parse()'s own
     // exhaustive match), Modifier is only ever compared with `==` in this
