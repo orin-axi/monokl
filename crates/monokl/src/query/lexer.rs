@@ -516,4 +516,17 @@ mod tests {
         let mut l = Lexer::new("\"日本語\"");
         assert_eq!(l.next_token(), Token::QuotedString("日本語".to_string()));
     }
+
+    // AC-006: read_quoted's wildcard arm appends any character other than a
+    // closing quote or backslash to the result as-is -- including ASCII
+    // whitespace. Every other quoted-string test in this file uses a
+    // whitespace-free payload, so none of them can distinguish the real
+    // wildcard arm from a mutant that special-cases whitespace (truncating
+    // at the first space, or silently dropping spaces from the payload).
+    #[test]
+    fn quoted_string_contains_ascii_whitespace_verbatim() {
+        let mut l = Lexer::new("\"a b\tc\"");
+        assert_eq!(l.next_token(), Token::QuotedString("a b\tc".to_string()));
+        assert_eq!(l.next_token(), Token::Eof);
+    }
 }

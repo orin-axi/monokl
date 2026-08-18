@@ -517,4 +517,21 @@ mod tests {
         assert!(terms[0].is_regex);
         assert_eq!(terms[0].pattern, "(unclosed");
     }
+
+    // AC-006 / AC-012: a bare quoted string containing ASCII whitespace
+    // survives end-to-end through the parser with the whitespace intact. The
+    // pattern is asserted against the hardcoded literal "a b" (NOT a
+    // re-computed `regex::escape("a b")` call) deliberately: a space is not
+    // a regex metacharacter, so `regex::escape("a b") == "a b"` and an
+    // assertion re-deriving the expected value the same way would
+    // self-cancel against exactly the whitespace-truncating/dropping
+    // mutations this test targets in read_quoted (lexer.rs).
+    #[test]
+    fn quoted_string_with_ascii_whitespace_preserved_in_pattern() {
+        let terms = parse("\"a b\"").unwrap();
+        assert_eq!(terms.len(), 1);
+        assert_eq!(terms[0].modifier, Modifier::Optional);
+        assert!(!terms[0].is_regex);
+        assert_eq!(terms[0].pattern, "a b");
+    }
 }
