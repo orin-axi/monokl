@@ -208,4 +208,45 @@ mod tests {
         let qp = QueryPlan { terms: vec![], required: vec![5], excluded: vec![], scored: vec![] };
         let _ = qp.search_patterns();
     }
+
+    // AC-019: search_patterns() only filters by category membership (required
+    // then scored, in that order) -- it never cross-checks an index against
+    // `excluded`. A directly-constructed QueryPlan (legal since all 4 fields
+    // are pub, AC-016) can place an excluded-looking term's index in
+    // `required` or `scored` directly, and its pattern still surfaces. Index
+    // 0's own term has Modifier::Excluded and index 0 also appears in
+    // `excluded`, but because it's ALSO listed in `required`, its pattern
+    // "e0" still appears in search_patterns()'s output -- proving the method
+    // does no cross-check against the excluded vec at all.
+    #[test]
+    fn search_patterns_directly_constructed_plan_ignores_excluded_membership() {
+        let qp = QueryPlan {
+            terms: vec![term(Modifier::Excluded, "e0"), term(Modifier::Required, "r0")],
+            required: vec![0, 1],
+            excluded: vec![0],
+            scored: vec![],
+        };
+        assert_eq!(qp.search_patterns(), vec!["e0", "r0"]);
+    }
+
+    // AC-016: QueryPlan derives (Debug, Clone only) -- absence of Default is
+    // not provable by a plain generic bound check (which can only prove a
+    // trait IS implemented), so this uses the same const-specialization
+    // probe technique as this file's own SerProbe/DeProbe above. Per the
+    // gate's own analysis, PartialEq/Hash/Copy are compile-impossible
+    // additions to QueryPlan (Vec<ParsedTerm> has no Eq since ParsedTerm
+    // lacks PartialEq), so Default is the only realistic derive-list gap
+    // worth probing here.
+    struct DefaultProbe<T>(std::marker::PhantomData<T>);
+    trait NotDefault { const IS: bool = false; }
+    impl<T> NotDefault for DefaultProbe<T> {}
+    impl<T: Default> DefaultProbe<T> { const IS: bool = true; }
+
+    #[test]
+    fn query_plan_absence_of_default_pinned() {
+        assert!(!DefaultProbe::<QueryPlan>::IS);
+        // Positive control (proves the probe itself isn't just always
+        // false): usize implements Default.
+        assert!(DefaultProbe::<usize>::IS);
+    }
 }

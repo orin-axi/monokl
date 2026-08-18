@@ -278,10 +278,16 @@ mod tests {
     // content yield no term for that occurrence.
     #[test]
     fn plus_word_produces_required_escaped_term() {
-        let terms = parse("+foo").unwrap();
+        // "+foo.bar" (not "+foo") deliberately: "foo" has no regex
+        // metacharacter, so regex::escape("foo") == "foo" and an assertion
+        // re-computing regex::escape() from the same literal self-cancels
+        // against a mutation that drops the escape() call entirely
+        // (content_to_term's Word arm, AC-010). A hardcoded literal against
+        // a metachar-containing input pins the escape actually happened.
+        let terms = parse("+foo.bar").unwrap();
         assert_eq!(terms.len(), 1);
         assert_eq!(terms[0].modifier, Modifier::Required);
-        assert_eq!(terms[0].pattern, "foo");
+        assert_eq!(terms[0].pattern, "foo\\.bar");
         assert!(!terms[0].is_regex);
     }
 
@@ -296,13 +302,20 @@ mod tests {
 
     #[test]
     fn bare_word_and_quoted_string_produce_optional_escaped_terms() {
-        let terms = parse("foo.bar \"a b\"").unwrap();
+        // Quoted content is "a.b" (not "a b") deliberately: a space is not a
+        // regex metacharacter, so regex::escape("a b") == "a b" and an
+        // assertion re-computing regex::escape() from the same literal
+        // self-cancels against a mutation that drops the escape() call
+        // entirely (the main loop's own Token::QuotedString arm, AC-012). A
+        // hardcoded literal against a metachar-containing input pins the
+        // escape actually happened.
+        let terms = parse("foo.bar \"a.b\"").unwrap();
         assert_eq!(terms.len(), 2);
         assert_eq!(terms[0].modifier, Modifier::Optional);
         assert_eq!(terms[0].pattern, regex::escape("foo.bar"));
         assert!(!terms[0].is_regex);
         assert_eq!(terms[1].modifier, Modifier::Optional);
-        assert_eq!(terms[1].pattern, regex::escape("a b"));
+        assert_eq!(terms[1].pattern, "a\\.b");
     }
 
     #[test]

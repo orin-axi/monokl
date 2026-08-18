@@ -291,6 +291,58 @@ mod tests {
         assert!(src.contains("pub fn next_token"));
     }
 
+    // AC-003: Lexer's public API surface is EXACTLY 2 methods -- `new` and
+    // `next_token` -- and no others. The per-name check above
+    // (lexer_helper_methods_are_private_structural) can only catch a
+    // mutation that makes one of the 6 ALREADY-NAMED helpers pub; it cannot
+    // catch a mutation that adds a brand-new 3rd `pub fn` to the impl block
+    // (a method under a name this test suite never enumerates). This test
+    // isolates the `impl<'a> Lexer<'a> { ... }` block via brace-depth
+    // matching (the naive first-`}`-after-`{` approach used elsewhere in
+    // this file for the struct/field block doesn't work here, since
+    // function bodies inside the impl block contain their own nested
+    // braces), collects every line containing "pub fn ", and asserts the
+    // resulting Vec equals exactly `["pub fn new", "pub fn next_token"]`.
+    #[test]
+    fn lexer_exactly_two_public_methods_structural() {
+        let src = include_str!("lexer.rs");
+        let impl_decl = "impl<'a> Lexer<'a> {";
+        let decl_start = src.find(impl_decl)
+            .unwrap_or_else(|| panic!("`{impl_decl}` not found in lexer.rs"));
+        let open = decl_start + impl_decl.len() - 1;
+        debug_assert_eq!(&src[open..open + 1], "{");
+
+        let mut depth: i32 = 0;
+        let mut close = None;
+        for (i, ch) in src[open..].char_indices() {
+            match ch {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        close = Some(open + i);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let close = close.unwrap_or_else(|| panic!("no matching close brace found for `{impl_decl}` block"));
+        let block = &src[open..=close];
+
+        let pub_fn_lines: Vec<String> = block
+            .lines()
+            .filter(|l| l.trim_start().starts_with("pub fn "))
+            .map(|l| {
+                let trimmed = l.trim_start();
+                let end = trimmed.find('(').unwrap_or(trimmed.len());
+                trimmed[..end].trim_end().to_string()
+            })
+            .collect();
+
+        assert_eq!(pub_fn_lines, vec!["pub fn new".to_string(), "pub fn next_token".to_string()]);
+    }
+
     // AC-004: dispatch order for each first-character case, including exact byte consumption.
     #[test]
     fn next_token_eof_on_empty_input() {
