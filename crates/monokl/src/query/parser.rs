@@ -127,6 +127,46 @@ mod tests {
         assert!(EqProbe::<Modifier>::IS);
     }
 
+    // AC-008: absence of Copy/Hash/PartialOrd/Ord on Modifier -- Modifier
+    // already derives PartialEq + Eq (unlike Token, which derives neither),
+    // so this probes the 4 traits an additive-derive mutation could still
+    // append to Modifier's derive list undetected: Copy, Hash, PartialOrd,
+    // Ord. Same const-specialization technique as lexer.rs's Token
+    // absence-of-Eq/Hash/PartialOrd/Ord probes (this project's established
+    // fix for the "a bound check can only prove presence" gap).
+    struct ModifierCopyProbe<T>(std::marker::PhantomData<T>);
+    trait NotModifierCopy { const IS: bool = false; }
+    impl<T> NotModifierCopy for ModifierCopyProbe<T> {}
+    impl<T: Copy> ModifierCopyProbe<T> { const IS: bool = true; }
+
+    struct ModifierHashProbe<T>(std::marker::PhantomData<T>);
+    trait NotModifierHash { const IS: bool = false; }
+    impl<T> NotModifierHash for ModifierHashProbe<T> {}
+    impl<T: std::hash::Hash> ModifierHashProbe<T> { const IS: bool = true; }
+
+    struct ModifierPartialOrdProbe<T>(std::marker::PhantomData<T>);
+    trait NotModifierPartialOrd { const IS: bool = false; }
+    impl<T> NotModifierPartialOrd for ModifierPartialOrdProbe<T> {}
+    impl<T: PartialOrd> ModifierPartialOrdProbe<T> { const IS: bool = true; }
+
+    struct ModifierOrdProbe<T>(std::marker::PhantomData<T>);
+    trait NotModifierOrd { const IS: bool = false; }
+    impl<T> NotModifierOrd for ModifierOrdProbe<T> {}
+    impl<T: Ord> ModifierOrdProbe<T> { const IS: bool = true; }
+
+    #[test]
+    fn modifier_absence_of_copy_hash_partialord_ord_pinned() {
+        assert!(!ModifierCopyProbe::<Modifier>::IS);
+        assert!(!ModifierHashProbe::<Modifier>::IS);
+        assert!(!ModifierPartialOrdProbe::<Modifier>::IS);
+        assert!(!ModifierOrdProbe::<Modifier>::IS);
+        // Positive controls (prove each probe itself isn't just always false).
+        assert!(ModifierCopyProbe::<usize>::IS);
+        assert!(ModifierHashProbe::<usize>::IS);
+        assert!(ModifierPartialOrdProbe::<usize>::IS);
+        assert!(ModifierOrdProbe::<usize>::IS);
+    }
+
     // AC-008: absence of serde Serialize/Deserialize on Modifier and
     // ParsedTerm -- same const-specialization technique as lexer.rs's Token
     // probe and plan.rs's QueryPlan probe (SPEC-006 AC-015 / SPEC-008 AC-002

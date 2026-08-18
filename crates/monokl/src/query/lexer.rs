@@ -295,50 +295,72 @@ mod tests {
     // `next_token` -- and no others. The per-name check above
     // (lexer_helper_methods_are_private_structural) can only catch a
     // mutation that makes one of the 6 ALREADY-NAMED helpers pub; it cannot
-    // catch a mutation that adds a brand-new 3rd `pub fn` to the impl block
-    // (a method under a name this test suite never enumerates). This test
-    // isolates the `impl<'a> Lexer<'a> { ... }` block via brace-depth
-    // matching (the naive first-`}`-after-`{` approach used elsewhere in
-    // this file for the struct/field block doesn't work here, since
-    // function bodies inside the impl block contain their own nested
-    // braces), collects every line containing "pub fn ", and asserts the
-    // resulting Vec equals exactly `["pub fn new", "pub fn next_token"]`.
+    // catch (a) a mutation that adds a brand-new 3rd `pub fn` to the impl
+    // block (a method under a name this test suite never enumerates), (b) a
+    // SECOND `impl<'a> Lexer<'a> { ... }` block elsewhere in the file
+    // carrying an extra `pub fn`, since a first-match-only search would
+    // never see it, or (c) a `pub(crate) fn` added to the existing block,
+    // since a `starts_with("pub fn ")` filter doesn't match `pub(crate) fn`.
+    // This test therefore: iterates every occurrence of the impl-block
+    // declaration via `match_indices` (not just the first), brace-matches
+    // each occurrence independently via brace-depth matching (the naive
+    // first-`}`-after-`{` approach used elsewhere in this file for the
+    // struct/field block doesn't work here, since function bodies inside the
+    // impl block contain their own nested braces) to find its own extent,
+    // and -- within each block -- collects every line whose trimmed start
+    // begins with "pub" and contains "fn " (a broad candidate filter that
+    // catches `pub(crate) fn`/`pub(super) fn` as well as bare `pub fn`, so a
+    // privacy-narrowed-but-still-public-looking method can't slip past
+    // undetected). The union of all such lines across every impl block
+    // occurrence must equal exactly `["pub fn new", "pub fn next_token"]` --
+    // any additional method, public or `pub(crate)`, that isn't literally
+    // one of those two exact strings makes the assertion fail, since it
+    // either doesn't match "pub fn ..." at all or shows up as an unwanted
+    // extra element.
     #[test]
     fn lexer_exactly_two_public_methods_structural() {
         let src = include_str!("lexer.rs");
         let impl_decl = "impl<'a> Lexer<'a> {";
-        let decl_start = src.find(impl_decl)
-            .unwrap_or_else(|| panic!("`{impl_decl}` not found in lexer.rs"));
-        let open = decl_start + impl_decl.len() - 1;
-        debug_assert_eq!(&src[open..open + 1], "{");
 
-        let mut depth: i32 = 0;
-        let mut close = None;
-        for (i, ch) in src[open..].char_indices() {
-            match ch {
-                '{' => depth += 1,
-                '}' => {
-                    depth -= 1;
-                    if depth == 0 {
-                        close = Some(open + i);
-                        break;
+        let mut pub_fn_lines: Vec<String> = Vec::new();
+        let mut occurrences = 0;
+        for (decl_start, _) in src.match_indices(impl_decl) {
+            occurrences += 1;
+            let open = decl_start + impl_decl.len() - 1;
+            debug_assert_eq!(&src[open..open + 1], "{");
+
+            let mut depth: i32 = 0;
+            let mut close = None;
+            for (i, ch) in src[open..].char_indices() {
+                match ch {
+                    '{' => depth += 1,
+                    '}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            close = Some(open + i);
+                            break;
+                        }
                     }
+                    _ => {}
                 }
-                _ => {}
+            }
+            let close = close.unwrap_or_else(|| {
+                panic!("no matching close brace found for `{impl_decl}` block at byte {decl_start}")
+            });
+            let block = &src[open..=close];
+
+            for l in block.lines() {
+                let trimmed = l.trim_start();
+                if trimmed.starts_with("pub") && trimmed.contains("fn ") {
+                    let fn_pos = trimmed.find("fn ").unwrap_or_else(|| {
+                        panic!("`contains(\"fn \")` true but `find(\"fn \")` failed for line {trimmed:?}")
+                    });
+                    let paren_rel = trimmed[fn_pos..].find('(').unwrap_or(trimmed.len() - fn_pos);
+                    pub_fn_lines.push(trimmed[..fn_pos + paren_rel].trim_end().to_string());
+                }
             }
         }
-        let close = close.unwrap_or_else(|| panic!("no matching close brace found for `{impl_decl}` block"));
-        let block = &src[open..=close];
-
-        let pub_fn_lines: Vec<String> = block
-            .lines()
-            .filter(|l| l.trim_start().starts_with("pub fn "))
-            .map(|l| {
-                let trimmed = l.trim_start();
-                let end = trimmed.find('(').unwrap_or(trimmed.len());
-                trimmed[..end].trim_end().to_string()
-            })
-            .collect();
+        assert!(occurrences > 0, "`{impl_decl}` not found in lexer.rs");
 
         assert_eq!(pub_fn_lines, vec!["pub fn new".to_string(), "pub fn next_token".to_string()]);
     }
