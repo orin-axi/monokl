@@ -515,6 +515,24 @@ mod tests {
         assert_eq!(l.next_token(), Token::Word("hello".to_string()));
     }
 
+    // AC-004: the "regex:" prefix check requires the trailing colon --
+    // "regexp" (starts with "regex" but has no colon) must NOT match the
+    // prefix check and must fall through to read_word() as an ordinary
+    // word. A mutant check of `starts_with("regex")` (colon dropped) would
+    // still match "regexp"'s first 5 bytes and, since the byte-skip
+    // afterward is the hardcoded `"regex:".len()` == 6, would consume all 6
+    // bytes of "regexp" as a RegexPrefix token, leaving nothing behind.
+    #[test]
+    fn regex_prefix_requires_the_trailing_colon() {
+        let mut l = Lexer::new("regexp");
+        assert_eq!(l.next_token(), Token::Word("regexp".to_string()));
+        assert_eq!(l.next_token(), Token::Eof);
+
+        let mut l2 = Lexer::new("regex foo");
+        assert_eq!(l2.next_token(), Token::Word("regex".to_string()));
+        assert_eq!(l2.next_token(), Token::Word("foo".to_string()));
+    }
+
     // AC-004: the "regex:" prefix check is case-sensitive -- "REGEX:"/"Regex:"
     // are ordinary Word content, not RegexPrefix.
     #[test]
@@ -570,6 +588,18 @@ mod tests {
         assert_eq!(l.next_token(), Token::Word("baz".to_string()));
         assert_eq!(l.next_token(), Token::Word("qux".to_string()));
         assert_eq!(l.next_token(), Token::Eof);
+    }
+
+    // AC-005: read_word's stopping predicate covers form feed (0x0C) too --
+    // `is_ascii_whitespace()` includes it, but the sibling test above only
+    // exercises tab/newline/CR, so a hand-rolled predicate like
+    // `matches!(ch, ' '|'\t'|'\n'|'\r')` (missing form feed) would still
+    // pass every other test in this file while failing to stop at 0x0C.
+    #[test]
+    fn word_stops_at_form_feed() {
+        let mut l = Lexer::new("foo\x0Cbar");
+        assert_eq!(l.next_token(), Token::Word("foo".to_string()));
+        assert_eq!(l.next_token(), Token::Word("bar".to_string()));
     }
 
     // AC-006: read_quoted's single-escape rule and silent EOF tolerance.

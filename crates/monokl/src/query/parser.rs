@@ -419,6 +419,19 @@ mod tests {
         assert!(parse("regex:").unwrap().is_empty());
     }
 
+    // AC-004: end-to-end companion to lexer.rs's
+    // regex_prefix_requires_the_trailing_colon -- "regexp" (no colon) must
+    // not be treated as a RegexPrefix by the parser either; it parses as one
+    // ordinary Optional, non-regex term on the literal word "regexp".
+    #[test]
+    fn regexp_without_colon_parses_as_ordinary_word_not_regex_prefix() {
+        let terms = parse("regexp").unwrap();
+        assert_eq!(terms.len(), 1);
+        assert_eq!(terms[0].modifier, Modifier::Optional);
+        assert!(!terms[0].is_regex);
+        assert_eq!(terms[0].pattern, "regexp");
+    }
+
     // AC-004: the "regex:" prefix match is case-sensitive end-to-end through
     // the parser -- "REGEX:foo" is lexed as an ordinary Word and therefore
     // parses as a single Optional, non-regex, escaped-literal term on the

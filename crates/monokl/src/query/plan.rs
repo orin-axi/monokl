@@ -172,6 +172,16 @@ mod tests {
         assert!(excl_only.search_patterns().is_empty());
     }
 
+    // AC-018: single-term boundary -- a mutant body like
+    // `self.terms.len() <= 1` would report is_empty() == true for exactly
+    // one term, which the 0-term and 2-term cases above can't distinguish
+    // from the real `self.terms.is_empty()`.
+    #[test]
+    fn is_empty_false_for_a_single_term_plan() {
+        let qp = QueryPlan::from_terms(vec![term(Modifier::Optional, "s0")]);
+        assert!(!qp.is_empty());
+    }
+
     // AC-019: search_patterns() returns required first, then scored, in each
     // category's own preserved order; excluded never appears; ordering is by
     // category, not by original input position.
