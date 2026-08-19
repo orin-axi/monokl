@@ -33,7 +33,7 @@ lang-ts = [
 ]
 
 # CLI binary — clap + miette diagnostics.
-cli = ["dep:clap", "miette"]
+cli = ["dep:clap", "dep:michi", "miette"]
 
 # Miette Diagnostic derive on MonoklError — forwarded to io-errors for full chain rendering.
 miette = ["dep:miette", "io-errors/miette"]
@@ -68,6 +68,7 @@ oxc_resolver  = { workspace = true, optional = true }
 # CLI feature-gated deps.
 clap   = { workspace = true, optional = true }
 miette = { workspace = true, optional = true }
+michi  = { git = "https://github.com/orin-axi/michi", rev = "cb355b8c05048e71e7219af8416c475346b6f837", optional = true, default-features = false, features = ["miette"] }
 
 
 [dev-dependencies]
