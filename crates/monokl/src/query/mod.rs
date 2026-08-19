@@ -78,4 +78,49 @@ mod tests {
             "mod.rs's pre-test portion must contain exactly these 5 declarations, in this exact order, and nothing else (AC-021)"
         );
     }
+
+    // AC-021: the test above (`mod_rs_exact_reexport_surface_structural`)
+    // only scans the portion of the file BEFORE the `#[cfg(test)]` marker --
+    // it has no visibility into anything appended after `mod tests { ... }`'s
+    // closing brace. A top-level declaration placed there (e.g. `pub use
+    // lexer::Token;` at end-of-file) is ordinary, live, public Rust that
+    // creates a `query::Token` path in violation of AC-021, yet is invisible
+    // to that test. This test closes that gap by scanning the ENTIRE file
+    // for top-level (non-indented, non-comment) lines, rather than only the
+    // pre-test-module head, and asserting the complete set is exactly the
+    // same 5 declarations plus the `#[cfg(test)]` / `mod tests {` / closing
+    // `}` markers that bound this very test module.
+    //
+    // Indentation-based filtering, not brace-counting: a brace-matching
+    // approach that counts `{`/`}` characters to find and excise the `mod
+    // tests { ... }` block does NOT work here, because `include_str!` pulls
+    // in this very file, including this matcher's own `'{' => ...` /
+    // `'}' => ...` source lines -- feeding the matcher's own source back
+    // into itself corrupts the depth count (the same self-reference trap
+    // documented in lexer.rs's `lexer_struct_has_no_derive_and_private_fields_structural`
+    // test). Filtering on leading-whitespace instead sidesteps this: every
+    // line inside `mod tests { ... }` is indented except its own closing
+    // `}`, so a plain per-line check needs no brace characters in its own
+    // source at all.
+    #[test]
+    fn mod_rs_has_no_declarations_outside_the_scanned_head() {
+        let src = include_str!("mod.rs");
+        let top_level: Vec<&str> = src
+            .lines()
+            .filter(|l| !l.is_empty() && !l.starts_with(char::is_whitespace))
+            .filter(|l| !l.starts_with("//"))
+            .filter(|l| !matches!(*l, "#[cfg(test)]" | "mod tests {" | "}"))
+            .collect();
+        assert_eq!(
+            top_level,
+            vec![
+                "pub mod lexer;",
+                "pub mod parser;",
+                "pub mod plan;",
+                "pub use parser::{Modifier, ParsedTerm, parse};",
+                "pub use plan::QueryPlan;",
+            ],
+            "mod.rs must contain no top-level declaration anywhere in the file, including after the test module, beyond these 5 (AC-021)"
+        );
+    }
 }
