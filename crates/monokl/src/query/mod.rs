@@ -122,5 +122,18 @@ mod tests {
             ],
             "mod.rs must contain no top-level declaration anywhere in the file, including after the test module, beyond these 5 (AC-021)"
         );
+
+        // Closes the remaining gap: the two checks above only catch
+        // unindented top-level lines within the scanned regions -- a
+        // WHITESPACE-INDENTED declaration appended after `mod tests { ... }`'s
+        // closing brace (e.g. `    pub use lexer::Token;`, leading spaces or a
+        // tab) is outside the head-scanned region AND doesn't start with
+        // non-whitespace, so it evades both. This module's own `#[cfg(test)]
+        // mod tests { ... }` is always mod.rs's final item, so its closing
+        // `}` must be the last non-blank line in the file -- full stop,
+        // regardless of indentation.
+        let last = src.lines().filter(|l| !l.trim().is_empty()).next_back().unwrap();
+        assert_eq!(last, "}", "mod.rs must end with the test module's closing brace -- \
+            no declaration may follow it, indented or not (AC-021)");
     }
 }
