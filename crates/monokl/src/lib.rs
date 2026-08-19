@@ -18,6 +18,19 @@ pub mod indices;
 pub mod output;
 #[cfg(feature = "lang-ts")]
 pub mod pipeline;
+/// AC-021: `Lexer` and `Token` are internal to `query::lexer` and must not be
+/// reachable at `query::Lexer` / `query::Token` -- these compile_fail
+/// doctests are compiled as real, separate crates depending on `monokl` as
+/// an external consumer would, so they prove unreachability against the
+/// actual compiler rather than a source-text scan of mod.rs.
+///
+/// ```compile_fail,E0432
+/// use monokl::query::Token;
+/// ```
+///
+/// ```compile_fail,E0432
+/// use monokl::query::Lexer;
+/// ```
 pub mod query;
 pub mod rank;
 pub mod text_search;
