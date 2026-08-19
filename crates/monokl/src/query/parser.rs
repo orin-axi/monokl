@@ -547,4 +547,46 @@ mod tests {
         assert!(!terms[0].is_regex);
         assert_eq!(terms[0].pattern, "a b");
     }
+
+    // AC-010: content_to_term's explicit `Token::RegexPrefix => None` arm is
+    // behaviorally equivalent to deleting it and falling through to the
+    // wildcard `_ => None` arm directly below it -- both produce identical
+    // observable output for every input, so no test asserting parse()'s or
+    // content_to_term's behavior can ever distinguish the two, and a
+    // cargo-mutants deletion of this specific arm survives every behavioral
+    // test in this file. AC-010 explicitly names this arm and documents its
+    // "silently loses modifier" comment as the traced behavior for
+    // "+regex:foo"/"-regex:foo" (see AC-013's tests above), so its presence
+    // in the source is pinned structurally instead, scoped to
+    // content_to_term's own match body so an unrelated `Token::RegexPrefix`
+    // mention elsewhere in the file can't satisfy this check.
+    #[test]
+    fn content_to_term_has_explicit_regex_prefix_arm_structural() {
+        let src = include_str!("parser.rs");
+        let fn_start = src
+            .find("fn content_to_term")
+            .unwrap_or_else(|| panic!("`fn content_to_term` not found in parser.rs"));
+        let open = src[fn_start..].find('{').unwrap() + fn_start;
+        let mut depth: i32 = 0;
+        let mut close = None;
+        for (i, ch) in src[open..].char_indices() {
+            match ch {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        close = Some(open + i);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let close = close.unwrap_or_else(|| panic!("no matching close brace found for content_to_term"));
+        let body = &src[open..=close];
+        assert!(
+            body.contains("Token::RegexPrefix => None"),
+            "content_to_term's match body must contain an explicit `Token::RegexPrefix => None` arm (AC-010), found body: {body:?}"
+        );
+    }
 }
