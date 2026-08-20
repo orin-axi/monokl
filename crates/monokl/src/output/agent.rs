@@ -139,3 +139,15 @@ mod kind_str_tests {
         assert_eq!(visibility_str(Visibility::Module), "module");
     }
 }
+
+pub trait ToonProjection<const N: usize> {
+    const TYPE_NAME: &'static str;
+    const FIELDS: [&'static str; N];
+    fn toon_rows(&self) -> Vec<[Value; N]>;
+    fn toon_total_count(&self) -> Option<usize> {
+        None
+    }
+    fn toon_hints(&self) -> Vec<michi::Hint> {
+        Vec::new()
+    }
+}
