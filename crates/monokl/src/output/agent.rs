@@ -408,3 +408,268 @@ mod walk_tests {
         assert!(matches!(innermost_walk_error(&wrapped), ignore::Error::InvalidDefinition));
     }
 }
+/// Converts `Self` into a `michi::DomainError`, preserving classification
+/// via a `monokl_code()` message prefix and the full `std::error::Error`
+/// source chain.
+pub trait ToDomainError {
+    fn monokl_code(&self) -> &'static str;
+    fn to_domain_error(&self, ctx: ErrorContext<'_>) -> michi::DomainError;
+}
+
+impl ToDomainError for MonoklError {
+    /// AC-007: one distinct `snake_case` string per variant. The `Io` variant
+    /// (SPEC-001's own 14th, first-declared variant) is not yet a member of
+    /// this enum -- see this plan's blocker note -- so this covers exactly
+    /// the 13 variants that currently exist. `monokl_code()` never returns
+    /// `"io"` today; that arm is added in the same follow-up that adds the
+    /// `Io` variant itself.
+    fn monokl_code(&self) -> &'static str {
+        match self {
+            MonoklError::Walk { .. } => "walk",
+            MonoklError::RegexBuild(_) => "regex_build",
+            MonoklError::NonUtf8Path { .. } => "non_utf8_path",
+            MonoklError::TooManyTerms { .. } => "too_many_terms",
+            MonoklError::TokenizerInit => "tokenizer_init",
+            MonoklError::Json(_) => "json",
+            MonoklError::PathOutsideRoot { .. } => "path_outside_root",
+            MonoklError::StaleDiskCache => "stale_disk_cache",
+            MonoklError::InvalidGitRef { .. } => "invalid_git_ref",
+            MonoklError::Git { .. } => "git",
+            MonoklError::SymlinkRejected { .. } => "symlink_rejected",
+            MonoklError::FileTooLarge { .. } => "file_too_large",
+            MonoklError::LockPoisoned { .. } => "lock_poisoned",
+        }
+    }
+
+    #[allow(clippy::cast_possible_wrap)] // count/limit/size/cap are always small in practice; KvValue::Int requires i64.
+    fn to_domain_error(&self, ctx: ErrorContext<'_>) -> michi::DomainError {
+        use michi::ErrorCode;
+
+        let code = match self {
+            MonoklError::RegexBuild(_)
+            | MonoklError::NonUtf8Path { .. }
+            | MonoklError::TooManyTerms { .. }
+            | MonoklError::InvalidGitRef { .. }
+            | MonoklError::FileTooLarge { .. } => ErrorCode::InvalidInput,
+            MonoklError::PathOutsideRoot { .. } | MonoklError::SymlinkRejected { .. } => ErrorCode::Forbidden,
+            MonoklError::StaleDiskCache => ErrorCode::Conflict,
+            MonoklError::TokenizerInit | MonoklError::Json(_) | MonoklError::Git { .. } | MonoklError::LockPoisoned { .. } => {
+                ErrorCode::ExternalFailure
+            }
+            MonoklError::Walk { source, .. } => walk_error_code(source),
+        };
+
+        let head = self.to_string();
+
+        let mut hints: Vec<String> = Vec::new();
+        let mut cause: Option<&dyn std::error::Error> = std::error::Error::source(self);
+        while let Some(err) = cause {
+            for line in split_display_lines(&err.to_string()) {
+                hints.push(line);
+            }
+            cause = err.source();
+        }
+
+        let mut domain_err = michi::DomainError::new(code, format!("{}: {head}", self.monokl_code())).retryable(false);
+        for line in hints {
+            domain_err = domain_err.hint(line);
+        }
+
+        domain_err = match self {
+            MonoklError::TooManyTerms { count, limit } => domain_err
+                .hint(format!("you supplied {count} terms; the limit is {limit}"))
+                .recovery(
+                    michi::RecoveryHint::new(ctx.command)
+                        .param("maxTerms", michi::KvValue::Int(*limit as i64))
+                        .reason("re-run with a shorter query"),
+                ),
+            MonoklError::FileTooLarge { path, size, cap } => domain_err
+                .hint(format!("{path} is {size} bytes; the cap is {cap} bytes"))
+                .recovery(
+                    michi::RecoveryHint::new(ctx.command)
+                        .param("maxBytes", michi::KvValue::Int(*cap as i64))
+                        .reason("the file exceeds this workspace's size cap"),
+                ),
+            MonoklError::InvalidGitRef { ref_, reason } => {
+                domain_err.hint(format!("{ref_:?} is not a valid git ref: {reason}"))
+            }
+            _ => domain_err,
+        };
+
+        domain_err
+    }
+}
+
+fn split_display_lines(s: &str) -> Vec<String> {
+    s.replace("\r\n", "\n").replace('\r', "\n").split('\n').map(ToString::to_string).collect()
+}
+
+#[cfg(test)]
+mod error_tests {
+    use super::*;
+    use camino::Utf8PathBuf;
+
+    fn ctx() -> ErrorContext<'static> {
+        ErrorContext { command: "search" }
+    }
+
+    #[test]
+    fn ac007_monokl_code_covers_13_distinct_nonempty_codes() {
+        let errs: Vec<MonoklError> = vec![
+            MonoklError::Walk { path: Utf8PathBuf::from("/x"), source: ignore::Error::InvalidDefinition },
+            grep_regex::RegexMatcherBuilder::new().build("(").unwrap_err().into(),
+            MonoklError::NonUtf8Path { path: std::path::PathBuf::from("/bad") },
+            MonoklError::TooManyTerms { count: 1, limit: 1 },
+            MonoklError::TokenizerInit,
+            serde_json::from_str::<serde_json::Value>("{not valid").unwrap_err().into(),
+            MonoklError::PathOutsideRoot { path: Utf8PathBuf::from("/x") },
+            MonoklError::StaleDiskCache,
+            MonoklError::InvalidGitRef { ref_: "-x".to_string(), reason: "bad" },
+            MonoklError::Git { operation: "show", message: "e".to_string() },
+            MonoklError::SymlinkRejected { path: Utf8PathBuf::from("/l") },
+            MonoklError::FileTooLarge { path: Utf8PathBuf::from("/big"), size: 1, cap: 1 },
+            MonoklError::LockPoisoned { context: "ctx" },
+        ];
+        assert_eq!(errs.len(), 13);
+        let codes: Vec<&str> = errs.iter().map(|e| e.monokl_code()).collect();
+        assert_eq!(
+            codes,
+            vec![
+                "walk",
+                "regex_build",
+                "non_utf8_path",
+                "too_many_terms",
+                "tokenizer_init",
+                "json",
+                "path_outside_root",
+                "stale_disk_cache",
+                "invalid_git_ref",
+                "git",
+                "symlink_rejected",
+                "file_too_large",
+                "lock_poisoned",
+            ]
+        );
+        let mut dedup = codes.clone();
+        dedup.sort_unstable();
+        dedup.dedup();
+        assert_eq!(dedup.len(), 13, "all monokl_code() values must be distinct");
+        for c in &codes {
+            assert!(!c.is_empty() && !c.contains(' '), "code must be non-empty with no whitespace: {c:?}");
+        }
+    }
+
+    #[test]
+    fn ac008_error_code_mapping() {
+        assert_eq!(
+            MonoklError::NonUtf8Path { path: std::path::PathBuf::from("/x") }.to_domain_error(ctx()).code,
+            michi::ErrorCode::InvalidInput
+        );
+        assert_eq!(
+            MonoklError::PathOutsideRoot { path: Utf8PathBuf::from("/x") }.to_domain_error(ctx()).code,
+            michi::ErrorCode::Forbidden
+        );
+        assert_eq!(MonoklError::StaleDiskCache.to_domain_error(ctx()).code, michi::ErrorCode::Conflict);
+        assert_eq!(MonoklError::TokenizerInit.to_domain_error(ctx()).code, michi::ErrorCode::ExternalFailure);
+        assert_eq!(
+            MonoklError::LockPoisoned { context: "ctx" }.to_domain_error(ctx()).code,
+            michi::ErrorCode::ExternalFailure
+        );
+    }
+
+    #[test]
+    fn ac011_retryable_always_false_even_for_external_failure_codes() {
+        let err = MonoklError::LockPoisoned { context: "ctx" };
+        let domain_err = err.to_domain_error(ctx());
+        assert_eq!(domain_err.code, michi::ErrorCode::ExternalFailure);
+        assert!(!domain_err.retryable, "monokl errors must never be retryable");
+        let michi_err = michi::Error::Domain(domain_err);
+        assert_eq!(michi_err.class(), michi::ErrorClass::Internal, "must not classify as Transient");
+        assert!(!michi_err.is_retryable());
+    }
+
+    #[test]
+    fn ac010_head_is_selfs_own_display_not_sources() {
+        // Walk's own Display carries `path`, which lives ONLY in Walk's own
+        // Display text, never in the wrapped ignore::Error's Display.
+        let err = MonoklError::Walk {
+            path: Utf8PathBuf::from("/some/root"),
+            source: ignore::Error::InvalidDefinition,
+        };
+        let domain_err = err.to_domain_error(ctx());
+        assert!(domain_err.message.contains("/some/root"), "got: {}", domain_err.message);
+        assert!(domain_err.message.starts_with("walk: walker error at /some/root"), "got: {}", domain_err.message);
+    }
+
+    #[test]
+    fn ac012_too_many_terms_enrichment() {
+        let err = MonoklError::TooManyTerms { count: 12, limit: 8 };
+        let domain_err = err.to_domain_error(ctx());
+        assert!(domain_err.hints.iter().any(|h| h.as_str().contains("you supplied 12 terms")), "got: {:?}", domain_err.hints);
+        let recovery = domain_err.recovery.expect("recovery must be set");
+        assert_eq!(recovery.tool, "search");
+        assert_eq!(recovery.params, vec![("maxTerms".to_string(), michi::KvValue::Int(8))]);
+    }
+
+    #[test]
+    fn ac012_file_too_large_enrichment() {
+        let err = MonoklError::FileTooLarge { path: Utf8PathBuf::from("/big"), size: 100, cap: 50 };
+        let domain_err = err.to_domain_error(ctx());
+        assert!(domain_err.hints.iter().any(|h| h.as_str().contains("/big is 100 bytes")), "got: {:?}", domain_err.hints);
+        let recovery = domain_err.recovery.expect("recovery must be set");
+        assert_eq!(recovery.params, vec![("maxBytes".to_string(), michi::KvValue::Int(50))]);
+    }
+
+    #[test]
+    fn ac012_invalid_git_ref_enrichment_has_no_recovery() {
+        let err = MonoklError::InvalidGitRef { ref_: "-x".to_string(), reason: "bad ref" };
+        let domain_err = err.to_domain_error(ctx());
+        assert!(domain_err.hints.iter().any(|h| h.as_str().contains("bad ref")), "got: {:?}", domain_err.hints);
+        assert!(domain_err.recovery.is_none());
+    }
+
+    #[test]
+    fn ac012_remaining_variants_get_no_enrichment_beyond_head() {
+        let err = MonoklError::LockPoisoned { context: "ctx" };
+        let domain_err = err.to_domain_error(ctx());
+        assert!(domain_err.hints.is_empty(), "got: {:?}", domain_err.hints);
+        assert!(domain_err.recovery.is_none());
+    }
+
+    #[test]
+    fn ac009_walk_glob_maps_to_invalid_input() {
+        let glob_err = ignore::overrides::OverrideBuilder::new(".").add("[").unwrap_err();
+        assert!(matches!(glob_err, ignore::Error::Glob { .. }), "expected a bare Glob error, got: {glob_err:?}");
+        let err = MonoklError::Walk { path: Utf8PathBuf::from("/x"), source: glob_err };
+        assert_eq!(err.to_domain_error(ctx()).code, michi::ErrorCode::InvalidInput);
+    }
+
+    #[test]
+    fn ac009_walk_io_not_found_maps_to_not_found() {
+        let io_err = ignore::Error::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "gone"));
+        let err = MonoklError::Walk { path: Utf8PathBuf::from("/x"), source: io_err };
+        assert_eq!(err.to_domain_error(ctx()).code, michi::ErrorCode::NotFound);
+    }
+
+    #[test]
+    fn ac009_walk_nested_glob_inside_with_path_inside_with_line_number() {
+        // The real shape a malformed .gitignore line produces per AC-009's
+        // own finding: a Glob wrapped in WithPath wrapped in WithLineNumber.
+        let nested = ignore::Error::WithLineNumber {
+            line: 3,
+            err: Box::new(ignore::Error::WithPath {
+                path: std::path::PathBuf::from(".gitignore"),
+                err: Box::new(ignore::overrides::OverrideBuilder::new(".").add("[").unwrap_err()),
+            }),
+        };
+        let err = MonoklError::Walk { path: Utf8PathBuf::from("/x"), source: nested };
+        assert_eq!(err.to_domain_error(ctx()).code, michi::ErrorCode::InvalidInput);
+    }
+
+    #[test]
+    fn ac009_walk_loop_maps_to_external_failure() {
+        let loop_err = ignore::Error::Loop { ancestor: std::path::PathBuf::from("/a"), child: std::path::PathBuf::from("/a/b") };
+        let err = MonoklError::Walk { path: Utf8PathBuf::from("/x"), source: loop_err };
+        assert_eq!(err.to_domain_error(ctx()).code, michi::ErrorCode::ExternalFailure);
+    }
+}
