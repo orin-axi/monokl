@@ -128,15 +128,31 @@ mod kind_str_tests {
 
     #[test]
     fn symbol_kind_str_matches_serde_camel_case_form() {
-        assert_eq!(symbol_kind_str(SymbolKind::TypeAlias), "typeAlias");
-        assert_eq!(symbol_kind_str(SymbolKind::Other), "other");
+        // B-005: all 15 variants pinned, not just 3.
         assert_eq!(symbol_kind_str(SymbolKind::Function), "function");
+        assert_eq!(symbol_kind_str(SymbolKind::Method), "method");
+        assert_eq!(symbol_kind_str(SymbolKind::Constructor), "constructor");
+        assert_eq!(symbol_kind_str(SymbolKind::Class), "class");
+        assert_eq!(symbol_kind_str(SymbolKind::Struct), "struct");
+        assert_eq!(symbol_kind_str(SymbolKind::Enum), "enum");
+        assert_eq!(symbol_kind_str(SymbolKind::Interface), "interface");
+        assert_eq!(symbol_kind_str(SymbolKind::TypeAlias), "typeAlias");
+        assert_eq!(symbol_kind_str(SymbolKind::Property), "property");
+        assert_eq!(symbol_kind_str(SymbolKind::Field), "field");
+        assert_eq!(symbol_kind_str(SymbolKind::Variable), "variable");
+        assert_eq!(symbol_kind_str(SymbolKind::Module), "module");
+        assert_eq!(symbol_kind_str(SymbolKind::Impl), "impl");
+        assert_eq!(symbol_kind_str(SymbolKind::Macro), "macro");
+        assert_eq!(symbol_kind_str(SymbolKind::Other), "other");
     }
 
     #[test]
     fn visibility_str_matches_serde_camel_case_form() {
+        // B-005: all 4 variants pinned, not just 2.
         assert_eq!(visibility_str(Visibility::Public), "public");
+        assert_eq!(visibility_str(Visibility::Crate), "crate");
         assert_eq!(visibility_str(Visibility::Module), "module");
+        assert_eq!(visibility_str(Visibility::Private), "private");
     }
 }
 
@@ -301,6 +317,12 @@ mod projection_tests {
         assert!(rendered.contains("src/lib.rs,1,5,function,fn foo(),1,1"), "got: {rendered}");
         assert!(!rendered.contains("fn foo() {}"), "code field must never appear in TOON output, got: {rendered}");
         assert!(rendered.contains("help[1]:\n  use extract"), "extract hint must be appended, got: {rendered}");
+        // B-005/AC-006: the hint must use ExtractRequest's agent-facing
+        // camelCase parameter spellings (file/lineStart/lineEnd), never
+        // ExtractRequest's own Rust field names (line_start/line_end).
+        assert!(rendered.contains("file/lineStart/lineEnd"), "got: {rendered}");
+        assert!(!rendered.contains("line_start"), "got: {rendered}");
+        assert!(!rendered.contains("line_end"), "got: {rendered}");
     }
 
     /// AC-014: an invalid ToonOptions (deliberately mismatched arity, forced
@@ -422,6 +444,32 @@ mod walk_tests {
             }),
         };
         assert!(matches!(innermost_walk_error(&wrapped), ignore::Error::InvalidDefinition));
+        // B-003: also assert the resulting ErrorCode, not just leaf identity.
+        assert_eq!(walk_error_code(&wrapped), michi::ErrorCode::InvalidInput);
+    }
+
+    #[test]
+    fn walk_error_code_unrecognized_file_type_maps_to_invalid_input() {
+        let err = ignore::Error::UnrecognizedFileType("bogus".to_string());
+        assert_eq!(walk_error_code(&err), michi::ErrorCode::InvalidInput);
+    }
+
+    #[test]
+    fn walk_error_code_invalid_definition_maps_to_invalid_input() {
+        assert_eq!(walk_error_code(&ignore::Error::InvalidDefinition), michi::ErrorCode::InvalidInput);
+    }
+
+    #[test]
+    fn walk_error_code_partial_non_single_maps_to_external_failure() {
+        assert_eq!(walk_error_code(&ignore::Error::Partial(vec![])), michi::ErrorCode::ExternalFailure);
+        let two = ignore::Error::Partial(vec![ignore::Error::InvalidDefinition, ignore::Error::InvalidDefinition]);
+        assert_eq!(walk_error_code(&two), michi::ErrorCode::ExternalFailure);
+    }
+
+    #[test]
+    fn walk_error_code_io_other_kind_maps_to_external_failure() {
+        let io_err = ignore::Error::Io(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "exists"));
+        assert_eq!(walk_error_code(&io_err), michi::ErrorCode::ExternalFailure);
     }
 
     #[test]
@@ -496,9 +544,10 @@ impl ToDomainError for MonoklError {
             MonoklError::Walk { source, .. } => walk_error_code(source),
         };
 
-        let head = self.to_string();
+        let mut self_lines = split_display_lines(&self.to_string()).into_iter();
+        let head = self_lines.next().unwrap_or_default();
 
-        let mut hints: Vec<String> = Vec::new();
+        let mut hints: Vec<String> = self_lines.collect();
         let mut cause: Option<&dyn std::error::Error> = std::error::Error::source(self);
         while let Some(err) = cause {
             for line in split_display_lines(&err.to_string()) {
@@ -612,6 +661,34 @@ mod error_tests {
             MonoklError::LockPoisoned { context: "ctx" }.to_domain_error(ctx()).code,
             michi::ErrorCode::ExternalFailure
         );
+
+        // B-002: the remaining 7 non-Walk variants of the fixed ErrorCode
+        // mapping table (Walk's own fan-out is covered separately by the
+        // walk_error_code/AC-009 tests below).
+        let regex_err: MonoklError = grep_regex::RegexMatcherBuilder::new().build("(").unwrap_err().into();
+        assert_eq!(regex_err.to_domain_error(ctx()).code, michi::ErrorCode::InvalidInput);
+        assert_eq!(
+            MonoklError::TooManyTerms { count: 1, limit: 1 }.to_domain_error(ctx()).code,
+            michi::ErrorCode::InvalidInput
+        );
+        assert_eq!(
+            MonoklError::InvalidGitRef { ref_: "-x".to_string(), reason: "bad" }.to_domain_error(ctx()).code,
+            michi::ErrorCode::InvalidInput
+        );
+        assert_eq!(
+            MonoklError::FileTooLarge { path: Utf8PathBuf::from("/big"), size: 1, cap: 1 }.to_domain_error(ctx()).code,
+            michi::ErrorCode::InvalidInput
+        );
+        assert_eq!(
+            MonoklError::SymlinkRejected { path: Utf8PathBuf::from("/l") }.to_domain_error(ctx()).code,
+            michi::ErrorCode::Forbidden
+        );
+        let json_err: MonoklError = serde_json::from_str::<serde_json::Value>("{not valid").unwrap_err().into();
+        assert_eq!(json_err.to_domain_error(ctx()).code, michi::ErrorCode::ExternalFailure);
+        assert_eq!(
+            MonoklError::Git { operation: "show", message: "e".to_string() }.to_domain_error(ctx()).code,
+            michi::ErrorCode::ExternalFailure
+        );
     }
 
     #[test]
@@ -638,6 +715,45 @@ mod error_tests {
         assert!(domain_err.message.starts_with("walk: walker error at /some/root"), "got: {}", domain_err.message);
     }
 
+    /// B-001 regression: `head` must be exactly the FIRST LINE of self's own
+    /// Display text -- reproduces the exact corruption case a real
+    /// multi-line `Git { message }` produces before the fix (extra physical
+    /// lines with no `message:`/`help[`/`  ` prefix at all). Before the
+    /// fix, `head` was `self.to_string()` unsplit, so `domain_err.message`
+    /// would contain all three lines joined by raw `\n`; after the fix,
+    /// only the first line is in `message`, and the remaining lines are
+    /// separate `.hint()` entries.
+    #[test]
+    fn ac010_b001_multiline_self_display_head_is_first_line_only() {
+        let err = MonoklError::Git { operation: "show", message: "line one\nline two\nline three".to_string() };
+        let domain_err = err.to_domain_error(ctx());
+
+        assert_eq!(domain_err.message, "git: git show failed: line one");
+        assert!(!domain_err.message.contains('\n'), "got: {:?}", domain_err.message);
+        let hint_strs: Vec<&str> = domain_err.hints.iter().map(michi::Hint::as_str).collect();
+        assert_eq!(hint_strs, vec!["line two", "line three"]);
+    }
+
+    /// B-004: covers both halves of AC-010 in one place -- self's own
+    /// multi-line Display is split with element 0 as `head` and the rest
+    /// pushed as hints (B-001's fix), AND those self-derived hints precede
+    /// the hints produced by the separate source-chain-flattening walk
+    /// (whose own link -- `ignore::Error::Io`'s Display -- is itself
+    /// multi-line here, exercising that no source() call exists on
+    /// `ignore::Error` per AC-009, so the walk terminates after exactly one
+    /// link). Ordering: self's extra lines first, then the source walk's.
+    #[test]
+    fn ac010_b004_self_and_source_multiline_hints_ordered() {
+        let inner_io = std::io::Error::other("io line one\nio line two");
+        let source = ignore::Error::Io(inner_io);
+        let err = MonoklError::Walk { path: Utf8PathBuf::from("root line one\nroot line two"), source };
+        let domain_err = err.to_domain_error(ctx());
+
+        assert_eq!(domain_err.message, "walk: walker error at root line one");
+        let hint_strs: Vec<&str> = domain_err.hints.iter().map(michi::Hint::as_str).collect();
+        assert_eq!(hint_strs, vec!["root line two", "io line one", "io line two"]);
+    }
+
     #[test]
     fn ac012_too_many_terms_enrichment() {
         let err = MonoklError::TooManyTerms { count: 12, limit: 8 };
@@ -646,6 +762,8 @@ mod error_tests {
         let recovery = domain_err.recovery.expect("recovery must be set");
         assert_eq!(recovery.tool, "search");
         assert_eq!(recovery.params, vec![("maxTerms".to_string(), michi::KvValue::Int(8))]);
+        // B-005/AC-012: the exact `.reason(...)` literal is locked verbatim.
+        assert_eq!(recovery.reason.as_deref(), Some("re-run with a shorter query"));
     }
 
     #[test]
@@ -654,7 +772,11 @@ mod error_tests {
         let domain_err = err.to_domain_error(ctx());
         assert!(domain_err.hints.iter().any(|h| h.as_str().contains("/big is 100 bytes")), "got: {:?}", domain_err.hints);
         let recovery = domain_err.recovery.expect("recovery must be set");
+        // B-005: sibling of ac012_too_many_terms_enrichment's own .tool check.
+        assert_eq!(recovery.tool, "search");
         assert_eq!(recovery.params, vec![("maxBytes".to_string(), michi::KvValue::Int(50))]);
+        // B-005/AC-012: the exact `.reason(...)` literal is locked verbatim.
+        assert_eq!(recovery.reason.as_deref(), Some("the file exceeds this workspace's size cap"));
     }
 
     #[test]
