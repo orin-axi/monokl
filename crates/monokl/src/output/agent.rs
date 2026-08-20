@@ -369,6 +369,34 @@ mod projection_tests {
         assert!(domain_err.message.starts_with("toon_render_invalid: "), "got: {}", domain_err.message);
     }
 
+    /// B-013/AC-014: `render_projection`'s own explicit `validate()` guard
+    /// (`if let Err(e) = opts.validate() { return Err(toon_validation_error(&e)); }`)
+    /// has zero end-to-end coverage from `ac014_toon_validation_error_shape`
+    /// above -- that test exercises `toon_validation_error()` in isolation via
+    /// a hand-built `ToonOptions`, never through `render_projection` itself,
+    /// so deleting the guard leaves every existing test green. This drives a
+    /// real `ToonProjection<1>` impl with a deliberately invalid `FIELDS`
+    /// entry (a comma, one of michi-toon's own structural chars -- verified
+    /// against `ToonOptions::validate()`'s real source, crates/michi-toon/src/lib.rs,
+    /// which rejects any field name containing a `STRUCTURAL` char via
+    /// `Err(ToonError::InvalidFieldName)`) through `render_projection` itself.
+    struct InvalidFieldNameProjection;
+    impl ToonProjection<1> for InvalidFieldNameProjection {
+        const TYPE_NAME: &'static str = "invalid";
+        const FIELDS: [&'static str; 1] = ["a,b"];
+        fn toon_rows(&self) -> Vec<[Value; 1]> {
+            vec![[Value::from("x")]]
+        }
+    }
+
+    #[test]
+    fn ac014_render_projection_end_to_end_validation_error() {
+        let err = render_projection(&InvalidFieldNameProjection).expect_err("invalid FIELDS entry must fail validate()");
+        assert_eq!(err.code, michi::ErrorCode::ExternalFailure);
+        assert!(!err.retryable);
+        assert!(err.message.starts_with("toon_render_invalid: "), "got: {}", err.message);
+    }
+
     /// AC-013: michi::toon::Value::Null and Value::from("") render
     /// identically in a full TOON document -- there is no way for a reader
     /// to distinguish an absent field from a present empty-string field.
@@ -426,6 +454,104 @@ mod projection_tests {
     fn b007_render_projection_wires_toon_total_count_into_output() {
         let rendered = render_projection(&DummyProjectionWithTotal).expect("valid projection must render");
         assert!(rendered.contains("totalCount: 42"), "got: {rendered}");
+    }
+
+    /// B-012/AC-005 + B-014/AC-006: every prior projection test used exactly one
+    /// row, so the multi-row flattening loop itself (`SymbolsResult`'s nested
+    /// `for (file, entries) in &self.files { for e in entries { .. } }`, and
+    /// `SearchResponse`'s `self.results.iter().map(..)`) was unproven -- a
+    /// `.take(1)` on either outer iterator left every existing test green.
+    #[test]
+    fn ac005_ac006_multi_row_flattening_symbols_and_search() {
+        use crate::types::{CodeBlock, RankedBlock, SearchResponse, SymbolEntry, SymbolsResult};
+        use camino::Utf8PathBuf;
+        use std::collections::BTreeMap;
+
+        fn entry(name: &str, line: usize) -> SymbolEntry {
+            SymbolEntry {
+                name: name.to_string(),
+                kind: SymbolKind::Function,
+                line,
+                signature: None,
+                owner: None,
+                trait_impl: None,
+                visibility: None,
+                kind_detail: None,
+            }
+        }
+
+        fn block(file: &str, line_start: usize, line_end: usize, rank: usize, final_score: f64) -> RankedBlock {
+            RankedBlock {
+                block: CodeBlock {
+                    file: Utf8PathBuf::from(file),
+                    line_start,
+                    line_end,
+                    node_kind: SymbolKind::Function,
+                    code: String::new(),
+                    symbol_signature: None,
+                    matched_lines: Vec::new(),
+                    matched_keywords: Vec::new(),
+                },
+                bm25_score: 0.0,
+                coverage_boost: 0.0,
+                node_type_boost: 0.0,
+                final_score,
+                rank,
+                parent_context: None,
+            }
+        }
+
+        let mut files = BTreeMap::new();
+        // Inserted out of key order -- src/z.rs before src/a.rs -- so a passing
+        // test proves BTreeMap's own key-sorted iteration governs render order,
+        // not insertion order.
+        files.insert(Utf8PathBuf::from("src/z.rs"), vec![entry("z1", 1), entry("z2", 2)]);
+        files.insert(Utf8PathBuf::from("src/a.rs"), vec![entry("a1", 3)]);
+        let symbols = SymbolsResult { files, total_symbol_count: 3, truncation_marker: None, diagnostics: Vec::new() };
+
+        assert_eq!(symbols.toon_rows().len(), 3, "all (file, entry) pairs across every BTreeMap key must flatten into rows");
+
+        let rendered = render_projection(&symbols).expect("valid projection must render");
+        assert!(
+            rendered.starts_with("symbols[3]{file,name,kind,line,signature,owner,traitImpl,visibility,kindDetail}:\n"),
+            "got: {rendered}"
+        );
+        let a1_pos = rendered.find("src/a.rs,a1,").expect("a1 row must be present");
+        let z1_pos = rendered.find("src/z.rs,z1,").expect("z1 row must be present");
+        let z2_pos = rendered.find("src/z.rs,z2,").expect("z2 row must be present");
+        assert!(
+            a1_pos < z1_pos && z1_pos < z2_pos,
+            "rows must render in BTreeMap key order (src/a.rs before src/z.rs), then Vec order within a key: got {rendered}"
+        );
+
+        let search = SearchResponse {
+            results: vec![
+                block("src/one.rs", 1, 2, 1, 0.10),
+                block("src/two.rs", 3, 4, 2, 0.20),
+                block("src/three.rs", 5, 6, 3, 0.30),
+            ],
+            total_blocks_before_truncation: 3,
+            truncated: false,
+            truncation_marker: None,
+            total_bytes: 0,
+            total_tokens: 0,
+            diagnostics: Vec::new(),
+        };
+
+        assert_eq!(search.toon_rows().len(), 3, "every RankedBlock in `results` must flatten into a row");
+
+        let rendered = render_projection(&search).expect("valid projection must render");
+        assert!(
+            rendered.starts_with("search[3]{file,lineStart,lineEnd,nodeKind,symbolSignature,rank,finalScore}:\n"),
+            "got: {rendered}"
+        );
+        let one_pos = rendered.find("src/one.rs,1,2,").expect("first result row must be present");
+        let two_pos = rendered.find("src/two.rs,3,4,").expect("second result row must be present");
+        let three_pos = rendered.find("src/three.rs,5,6,").expect("third result row must be present");
+        assert!(
+            one_pos < two_pos && two_pos < three_pos,
+            "rows must render in `results`' own input order: got {rendered}"
+        );
     }
 }
 /// AC-009 (Walk half only -- `MonoklError::Walk`'s wrapped `ignore::Error`).
