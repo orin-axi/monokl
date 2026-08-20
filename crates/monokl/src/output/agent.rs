@@ -86,3 +86,56 @@ mod cell_tests {
     }
 
 }
+
+/// `SymbolKind` has no `as_str()`/`Display` of its own (SPEC-003 AC-001);
+/// this returns the same camelCase strings serde's `rename_all = "camelCase"`
+/// already produces for it (SPEC-003 AC-002), via a direct, exhaustive
+/// match with no default arm.
+pub fn symbol_kind_str(k: SymbolKind) -> &'static str {
+    match k {
+        SymbolKind::Function => "function",
+        SymbolKind::Method => "method",
+        SymbolKind::Constructor => "constructor",
+        SymbolKind::Class => "class",
+        SymbolKind::Struct => "struct",
+        SymbolKind::Enum => "enum",
+        SymbolKind::Interface => "interface",
+        SymbolKind::TypeAlias => "typeAlias",
+        SymbolKind::Property => "property",
+        SymbolKind::Field => "field",
+        SymbolKind::Variable => "variable",
+        SymbolKind::Module => "module",
+        SymbolKind::Impl => "impl",
+        SymbolKind::Macro => "macro",
+        SymbolKind::Other => "other",
+    }
+}
+
+/// `Visibility` has no `as_str()`/`Display` of its own (SPEC-003 AC-003);
+/// same rationale as `symbol_kind_str`.
+pub fn visibility_str(v: Visibility) -> &'static str {
+    match v {
+        Visibility::Public => "public",
+        Visibility::Crate => "crate",
+        Visibility::Module => "module",
+        Visibility::Private => "private",
+    }
+}
+
+#[cfg(test)]
+mod kind_str_tests {
+    use super::*;
+
+    #[test]
+    fn symbol_kind_str_matches_serde_camel_case_form() {
+        assert_eq!(symbol_kind_str(SymbolKind::TypeAlias), "typeAlias");
+        assert_eq!(symbol_kind_str(SymbolKind::Other), "other");
+        assert_eq!(symbol_kind_str(SymbolKind::Function), "function");
+    }
+
+    #[test]
+    fn visibility_str_matches_serde_camel_case_form() {
+        assert_eq!(visibility_str(Visibility::Public), "public");
+        assert_eq!(visibility_str(Visibility::Module), "module");
+    }
+}
