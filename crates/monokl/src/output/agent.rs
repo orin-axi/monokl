@@ -204,3 +204,139 @@ impl ToonProjection<7> for crate::types::SearchResponse {
         )]
     }
 }
+
+/// Constructs a `DomainError` directly from a `michi::toon::ToonError` --
+/// deliberately not via `ToDomainError`, which is scoped only to
+/// `MonoklError`'s closed `monokl_code()` set. Indicates a bug in this
+/// module's own row/field construction, not a caller input error.
+pub fn toon_validation_error(e: &michi::toon::ToonError) -> michi::DomainError {
+    michi::DomainError::new(michi::ErrorCode::ExternalFailure, format!("toon_render_invalid: {e}")).retryable(false)
+}
+
+/// The sole function that converts a `ToonProjection<N>` implementation into
+/// a rendered TOON string.
+#[allow(clippy::result_large_err)] // AC-004B locks this exact signature verbatim against michi's own DomainError.
+pub fn render_projection<const N: usize, T: ToonProjection<N>>(value: &T) -> Result<String, michi::DomainError> {
+    let rows: Vec<Vec<Value>> = value.toon_rows().into_iter().map(|row| row.to_vec()).collect();
+    let fields: Vec<String> = T::FIELDS.iter().map(|s| (*s).to_string()).collect();
+
+    let opts = michi::toon::ToonOptions::new(T::TYPE_NAME, fields, rows.clone()).total_count(value.toon_total_count());
+    if let Err(e) = opts.validate() {
+        return Err(toon_validation_error(&e));
+    }
+
+    let mut resp = michi::AgentResponse::new(T::TYPE_NAME).items(rows, T::FIELDS.as_slice()).hints(value.toon_hints());
+    if let Some(n) = value.toon_total_count() {
+        resp = resp.total_count(n);
+    }
+    Ok(resp.render_toon())
+}
+
+#[cfg(test)]
+mod projection_tests {
+    use super::*;
+
+    #[test]
+    fn ac004b_render_projection_symbols_result_end_to_end() {
+        use crate::types::{SymbolEntry, SymbolKind, SymbolsResult};
+        use camino::Utf8PathBuf;
+        use std::collections::BTreeMap;
+
+        let mut files = BTreeMap::new();
+        files.insert(
+            Utf8PathBuf::from("src/lib.rs"),
+            vec![SymbolEntry {
+                name: "foo".to_string(),
+                kind: SymbolKind::Function,
+                line: 10,
+                signature: Some("fn foo()".to_string()),
+                owner: None,
+                trait_impl: None,
+                visibility: Some(crate::types::Visibility::Public),
+                kind_detail: None,
+            }],
+        );
+        let result =
+            SymbolsResult { files, total_symbol_count: 1, truncation_marker: None, diagnostics: Vec::new() };
+
+        let rendered = render_projection(&result).expect("valid projection must render");
+        assert!(rendered.starts_with("symbols[1]{file,name,kind,line,signature,owner,traitImpl,visibility,kindDetail}:\n"), "got: {rendered}");
+        assert!(rendered.contains("src/lib.rs,foo,function,10,fn foo(),,,public,"), "got: {rendered}");
+    }
+
+    #[test]
+    fn ac004b_render_projection_search_response_includes_extract_hint() {
+        use crate::types::{CodeBlock, RankedBlock, SearchResponse, SymbolKind};
+        use camino::Utf8PathBuf;
+
+        let response = SearchResponse {
+            results: vec![RankedBlock {
+                block: CodeBlock {
+                    file: Utf8PathBuf::from("src/lib.rs"),
+                    line_start: 1,
+                    line_end: 5,
+                    node_kind: SymbolKind::Function,
+                    code: "fn foo() {}".to_string(),
+                    symbol_signature: Some("fn foo()".to_string()),
+                    matched_lines: vec![1],
+                    matched_keywords: vec!["foo".to_string()],
+                },
+                bm25_score: 1.0,
+                coverage_boost: 0.0,
+                node_type_boost: 0.0,
+                final_score: 1.0,
+                rank: 1,
+                parent_context: None,
+            }],
+            total_blocks_before_truncation: 1,
+            truncated: false,
+            truncation_marker: None,
+            total_bytes: 100,
+            total_tokens: 20,
+            diagnostics: Vec::new(),
+        };
+
+        let rendered = render_projection(&response).expect("valid projection must render");
+        assert!(rendered.contains("search[1]{file,lineStart,lineEnd,nodeKind,symbolSignature,rank,finalScore}:\n"), "got: {rendered}");
+        assert!(rendered.contains("src/lib.rs,1,5,function,fn foo(),1,1"), "got: {rendered}");
+        assert!(!rendered.contains("fn foo() {}"), "code field must never appear in TOON output, got: {rendered}");
+        assert!(rendered.contains("help[1]:\n  use extract"), "extract hint must be appended, got: {rendered}");
+    }
+
+    /// AC-014: an invalid ToonOptions (deliberately mismatched arity, forced
+    /// via a hand-built ToonOptions rather than a real ToonProjection impl,
+    /// since ToonProjection<N> makes a real mismatch impossible to construct)
+    /// is caught by render_projection's own explicit validate() call and
+    /// converted via toon_validation_error, not silently rendered.
+    #[test]
+    fn ac014_toon_validation_error_shape() {
+        let opts = michi::toon::ToonOptions::new(
+            "t".to_string(),
+            vec!["a".to_string()],
+            vec![vec![Value::from("x"), Value::from("y")]],
+        );
+        let err = opts.validate().unwrap_err();
+        let domain_err = toon_validation_error(&err);
+        assert_eq!(domain_err.code, michi::ErrorCode::ExternalFailure);
+        assert!(!domain_err.retryable);
+        assert!(domain_err.message.starts_with("toon_render_invalid: "), "got: {}", domain_err.message);
+    }
+
+    /// AC-013: michi::toon::Value::Null and Value::from("") render
+    /// identically in a full TOON document -- there is no way for a reader
+    /// to distinguish an absent field from a present empty-string field.
+    #[test]
+    fn ac013_null_and_empty_string_render_identically() {
+        let opts_null = michi::toon::ToonOptions::new(
+            "t".to_string(),
+            vec!["a".to_string()],
+            vec![vec![Value::Null]],
+        );
+        let opts_empty = michi::toon::ToonOptions::new(
+            "t".to_string(),
+            vec!["a".to_string()],
+            vec![vec![Value::from("")]],
+        );
+        assert_eq!(michi::toon::render_toon(&opts_null), michi::toon::render_toon(&opts_empty));
+    }
+}
