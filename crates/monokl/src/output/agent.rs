@@ -176,3 +176,31 @@ impl ToonProjection<9> for crate::types::SymbolsResult {
         rows
     }
 }
+impl ToonProjection<7> for crate::types::SearchResponse {
+    const TYPE_NAME: &'static str = "search";
+    const FIELDS: [&'static str; 7] =
+        ["file", "lineStart", "lineEnd", "nodeKind", "symbolSignature", "rank", "finalScore"];
+
+    fn toon_rows(&self) -> Vec<[Value; 7]> {
+        self.results
+            .iter()
+            .map(|block| {
+                [
+                    cell(block.block.file.as_str()),
+                    Value::from(block.block.line_start),
+                    Value::from(block.block.line_end),
+                    cell(symbol_kind_str(block.block.node_kind)),
+                    opt_cell(block.block.symbol_signature.as_deref()),
+                    Value::from(block.rank),
+                    Value::from(block.final_score),
+                ]
+            })
+            .collect()
+    }
+
+    fn toon_hints(&self) -> Vec<michi::Hint> {
+        vec![michi::Hint::new(
+            "use extract with file/lineStart/lineEnd to retrieve a row's actual code content",
+        )]
+    }
+}
