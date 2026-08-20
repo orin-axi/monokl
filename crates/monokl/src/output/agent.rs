@@ -340,3 +340,71 @@ mod projection_tests {
         assert_eq!(michi::toon::render_toon(&opts_null), michi::toon::render_toon(&opts_empty));
     }
 }
+/// AC-009 (Walk half only -- `MonoklError::Walk`'s wrapped `ignore::Error`).
+/// `ignore::Error` never overrides `std::error::Error::source()`, so this
+/// recurses through its own public wrapper variants directly instead. Match
+/// arms are deliberately kept separate (not combined via `|`) to match
+/// AC-009's own verbatim-locked, independently-compiled function text.
+#[allow(clippy::match_same_arms)]
+fn innermost_walk_error(e: &ignore::Error) -> &ignore::Error {
+    match e {
+        ignore::Error::WithLineNumber { err, .. } => innermost_walk_error(err),
+        ignore::Error::WithPath { err, .. } => innermost_walk_error(err),
+        ignore::Error::WithDepth { err, .. } => innermost_walk_error(err),
+        ignore::Error::Partial(errs) if errs.len() == 1 => innermost_walk_error(&errs[0]),
+        other => other,
+    }
+}
+
+/// Match arms kept in AC-009's own verbatim-locked order (not reordered to
+/// merge identical `InvalidInput` bodies) so this function stays a direct,
+/// literal match against the independently-compiled text AC-009 quotes.
+#[allow(clippy::match_same_arms)]
+fn walk_error_code(source: &ignore::Error) -> michi::ErrorCode {
+    use michi::ErrorCode;
+    let leaf = innermost_walk_error(source);
+    match leaf {
+        ignore::Error::Io(io_err) => match io_err.kind() {
+            std::io::ErrorKind::NotFound => ErrorCode::NotFound,
+            std::io::ErrorKind::PermissionDenied => ErrorCode::Forbidden,
+            _ => ErrorCode::ExternalFailure,
+        },
+        ignore::Error::Glob { .. } => ErrorCode::InvalidInput,
+        ignore::Error::Loop { .. } => ErrorCode::ExternalFailure,
+        ignore::Error::UnrecognizedFileType(_) => ErrorCode::InvalidInput,
+        ignore::Error::InvalidDefinition => ErrorCode::InvalidInput,
+        ignore::Error::Partial(errs) => {
+            let _ = errs;
+            ErrorCode::ExternalFailure
+        }
+        ignore::Error::WithLineNumber { .. } => unreachable!("innermost_walk_error strips WithLineNumber"),
+        ignore::Error::WithPath { .. } => unreachable!("innermost_walk_error strips WithPath"),
+        ignore::Error::WithDepth { .. } => unreachable!("innermost_walk_error strips WithDepth"),
+    }
+}
+
+#[cfg(test)]
+mod walk_tests {
+    use super::*;
+
+    #[test]
+    fn ac009_walk_error_code_direct_glob_and_loop() {
+        let glob_err = ignore::overrides::OverrideBuilder::new(".").add("[").unwrap_err();
+        assert_eq!(walk_error_code(&glob_err), michi::ErrorCode::InvalidInput);
+        let loop_err = ignore::Error::Loop { ancestor: std::path::PathBuf::from("/a"), child: std::path::PathBuf::from("/a/b") };
+        assert_eq!(walk_error_code(&loop_err), michi::ErrorCode::ExternalFailure);
+    }
+
+    #[test]
+    fn ac009_innermost_walk_error_unwraps_nested_wrappers() {
+        let inner = ignore::Error::InvalidDefinition;
+        let wrapped = ignore::Error::WithDepth {
+            depth: 2,
+            err: Box::new(ignore::Error::WithPath {
+                path: std::path::PathBuf::from("x"),
+                err: Box::new(ignore::Error::WithLineNumber { line: 1, err: Box::new(inner) }),
+            }),
+        };
+        assert!(matches!(innermost_walk_error(&wrapped), ignore::Error::InvalidDefinition));
+    }
+}
