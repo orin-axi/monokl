@@ -264,12 +264,19 @@ mod projection_tests {
             vec![SymbolEntry {
                 name: "foo".to_string(),
                 kind: SymbolKind::Function,
+                // B-008/AC-001: a literal embedded newline in a `cell()`-routed
+                // field must survive as the two-character escape `\n`, not a
+                // raw newline (which would corrupt the row) and not silently
+                // vanish (michi-toon's own `escape_value` deletes it).
                 line: 10,
-                signature: Some("fn foo()".to_string()),
-                owner: None,
-                trait_impl: None,
+                signature: Some("fn foo(x)\nsecond line".to_string()),
+                // B-009/AC-005: all three `Option` columns populated with
+                // distinct, recognizable values so a hardcoded `Value::Null`
+                // substitution for any of them cannot survive undetected.
+                owner: Some("MyOwner".to_string()),
+                trait_impl: Some("MyTrait".to_string()),
                 visibility: Some(crate::types::Visibility::Public),
-                kind_detail: None,
+                kind_detail: Some("static".to_string()),
             }],
         );
         let result =
@@ -277,7 +284,10 @@ mod projection_tests {
 
         let rendered = render_projection(&result).expect("valid projection must render");
         assert!(rendered.starts_with("symbols[1]{file,name,kind,line,signature,owner,traitImpl,visibility,kindDetail}:\n"), "got: {rendered}");
-        assert!(rendered.contains("src/lib.rs,foo,function,10,fn foo(),,,public,"), "got: {rendered}");
+        assert!(
+            rendered.contains("src/lib.rs,foo,function,10,fn foo(x)\\nsecond line,MyOwner,MyTrait,public,static"),
+            "got: {rendered}"
+        );
     }
 
     #[test]
@@ -289,19 +299,29 @@ mod projection_tests {
             results: vec![RankedBlock {
                 block: CodeBlock {
                     file: Utf8PathBuf::from("src/lib.rs"),
-                    line_start: 1,
-                    line_end: 5,
+                    // B-010/AC-006: line_start/line_end/rank/final_score are
+                    // all distinct so a column swap between block.block's
+                    // fields (line_start/line_end) and block's own fields
+                    // (rank/final_score) is actually detectable -- with the
+                    // prior degenerate all-1.0/all-1 values, such a swap
+                    // would have rendered an identical row.
+                    line_start: 5,
+                    line_end: 9,
                     node_kind: SymbolKind::Function,
                     code: "fn foo() {}".to_string(),
-                    symbol_signature: Some("fn foo()".to_string()),
+                    // B-008/AC-001: a literal embedded newline in an
+                    // `opt_cell()`-routed field must survive as the
+                    // two-character escape `\n`, not corrupt the row and not
+                    // silently vanish.
+                    symbol_signature: Some("fn foo(x)\nsecond line".to_string()),
                     matched_lines: vec![1],
                     matched_keywords: vec!["foo".to_string()],
                 },
-                bm25_score: 1.0,
-                coverage_boost: 0.0,
-                node_type_boost: 0.0,
-                final_score: 1.0,
-                rank: 1,
+                bm25_score: 0.75,
+                coverage_boost: 0.1,
+                node_type_boost: 0.05,
+                final_score: 0.92,
+                rank: 2,
                 parent_context: None,
             }],
             total_blocks_before_truncation: 1,
@@ -314,15 +334,20 @@ mod projection_tests {
 
         let rendered = render_projection(&response).expect("valid projection must render");
         assert!(rendered.contains("search[1]{file,lineStart,lineEnd,nodeKind,symbolSignature,rank,finalScore}:\n"), "got: {rendered}");
-        assert!(rendered.contains("src/lib.rs,1,5,function,fn foo(),1,1"), "got: {rendered}");
+        assert!(
+            rendered.contains("src/lib.rs,5,9,function,fn foo(x)\\nsecond line,2,0.92"),
+            "got: {rendered}"
+        );
         assert!(!rendered.contains("fn foo() {}"), "code field must never appear in TOON output, got: {rendered}");
-        assert!(rendered.contains("help[1]:\n  use extract"), "extract hint must be appended, got: {rendered}");
-        // B-005/AC-006: the hint must use ExtractRequest's agent-facing
-        // camelCase parameter spellings (file/lineStart/lineEnd), never
-        // ExtractRequest's own Rust field names (line_start/line_end).
-        assert!(rendered.contains("file/lineStart/lineEnd"), "got: {rendered}");
-        assert!(!rendered.contains("line_start"), "got: {rendered}");
-        assert!(!rendered.contains("line_end"), "got: {rendered}");
+        // B-011/AC-006/AC-012: the extract hint's exact literal text, not a
+        // substring -- a mutant altering any word of this prose would
+        // otherwise survive.
+        assert!(
+            rendered.contains(
+                "help[1]:\n  use extract with file/lineStart/lineEnd to retrieve a row's actual code content\n"
+            ),
+            "got: {rendered}"
+        );
     }
 
     /// AC-014: an invalid ToonOptions (deliberately mismatched arity, forced
@@ -376,6 +401,31 @@ mod projection_tests {
         let d = DummyProjection;
         assert_eq!(d.toon_total_count(), None);
         assert!(d.toon_hints().is_empty());
+    }
+
+    /// B-007 (AC-004B step 4): a `ToonProjection` whose `toon_total_count()`
+    /// returns `Some(n)` must have that `n` reach the rendered output as a
+    /// literal `totalCount: {n}` line -- proving `render_projection`'s own
+    /// `if let Some(n) = value.toon_total_count() { resp = resp.total_count(n); }`
+    /// step is actually exercised, not dead code every other test happens to
+    /// never trigger (every other `ToonProjection` impl in this module's own
+    /// tests relies on the trait's `None` default).
+    struct DummyProjectionWithTotal;
+    impl ToonProjection<1> for DummyProjectionWithTotal {
+        const TYPE_NAME: &'static str = "dummy";
+        const FIELDS: [&'static str; 1] = ["x"];
+        fn toon_rows(&self) -> Vec<[Value; 1]> {
+            vec![[Value::from("x")]]
+        }
+        fn toon_total_count(&self) -> Option<usize> {
+            Some(42)
+        }
+    }
+
+    #[test]
+    fn b007_render_projection_wires_toon_total_count_into_output() {
+        let rendered = render_projection(&DummyProjectionWithTotal).expect("valid projection must render");
+        assert!(rendered.contains("totalCount: 42"), "got: {rendered}");
     }
 }
 /// AC-009 (Walk half only -- `MonoklError::Walk`'s wrapped `ignore::Error`).
@@ -761,7 +811,14 @@ mod error_tests {
     fn ac012_too_many_terms_enrichment() {
         let err = MonoklError::TooManyTerms { count: 12, limit: 8 };
         let domain_err = err.to_domain_error(ctx());
-        assert!(domain_err.hints.iter().any(|h| h.as_str().contains("you supplied 12 terms")), "got: {:?}", domain_err.hints);
+        // B-011/AC-012: the exact `.hint(...)` literal, not a substring --
+        // a mutant altering the tail text ("; the limit is {limit}") would
+        // otherwise survive.
+        assert!(
+            domain_err.hints.iter().any(|h| h.as_str() == "you supplied 12 terms; the limit is 8"),
+            "got: {:?}",
+            domain_err.hints
+        );
         let recovery = domain_err.recovery.expect("recovery must be set");
         assert_eq!(recovery.tool, "search");
         assert_eq!(recovery.params, vec![("maxTerms".to_string(), michi::KvValue::Int(8))]);
@@ -773,7 +830,14 @@ mod error_tests {
     fn ac012_file_too_large_enrichment() {
         let err = MonoklError::FileTooLarge { path: Utf8PathBuf::from("/big"), size: 100, cap: 50 };
         let domain_err = err.to_domain_error(ctx());
-        assert!(domain_err.hints.iter().any(|h| h.as_str().contains("/big is 100 bytes")), "got: {:?}", domain_err.hints);
+        // B-011/AC-012: the exact `.hint(...)` literal, not a substring --
+        // a mutant altering the tail text ("; the cap is {cap} bytes")
+        // would otherwise survive.
+        assert!(
+            domain_err.hints.iter().any(|h| h.as_str() == "/big is 100 bytes; the cap is 50 bytes"),
+            "got: {:?}",
+            domain_err.hints
+        );
         let recovery = domain_err.recovery.expect("recovery must be set");
         // B-005: sibling of ac012_too_many_terms_enrichment's own .tool check.
         assert_eq!(recovery.tool, "search");
@@ -786,7 +850,16 @@ mod error_tests {
     fn ac012_invalid_git_ref_enrichment_has_no_recovery() {
         let err = MonoklError::InvalidGitRef { ref_: "-x".to_string(), reason: "bad ref" };
         let domain_err = err.to_domain_error(ctx());
-        assert!(domain_err.hints.iter().any(|h| h.as_str().contains("bad ref")), "got: {:?}", domain_err.hints);
+        // B-011/AC-012: the exact `.hint(...)` literal, not a substring --
+        // this pins the `{ref_:?}` debug-quoting specifically (a mutant
+        // dropping the `:?` to plain `{ref_}` would drop the surrounding
+        // quotes and would have survived a mere `.contains("bad ref")`
+        // check, since "bad ref" appears either way).
+        assert!(
+            domain_err.hints.iter().any(|h| h.as_str() == "\"-x\" is not a valid git ref: bad ref"),
+            "got: {:?}",
+            domain_err.hints
+        );
         assert!(domain_err.recovery.is_none());
     }
 
