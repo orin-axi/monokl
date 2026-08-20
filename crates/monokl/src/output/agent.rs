@@ -151,3 +151,28 @@ pub trait ToonProjection<const N: usize> {
         Vec::new()
     }
 }
+impl ToonProjection<9> for crate::types::SymbolsResult {
+    const TYPE_NAME: &'static str = "symbols";
+    const FIELDS: [&'static str; 9] =
+        ["file", "name", "kind", "line", "signature", "owner", "traitImpl", "visibility", "kindDetail"];
+
+    fn toon_rows(&self) -> Vec<[Value; 9]> {
+        let mut rows = Vec::new();
+        for (file, entries) in &self.files {
+            for e in entries {
+                rows.push([
+                    cell(file.as_str()),
+                    cell(&e.name),
+                    cell(symbol_kind_str(e.kind)),
+                    Value::from(e.line),
+                    opt_cell(e.signature.as_deref()),
+                    opt_cell(e.owner.as_deref()),
+                    opt_cell(e.trait_impl.as_deref()),
+                    opt_cell(e.visibility.map(visibility_str)),
+                    opt_cell(e.kind_detail.as_deref()),
+                ]);
+            }
+        }
+        rows
+    }
+}
