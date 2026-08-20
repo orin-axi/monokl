@@ -339,6 +339,22 @@ mod projection_tests {
         );
         assert_eq!(michi::toon::render_toon(&opts_null), michi::toon::render_toon(&opts_empty));
     }
+
+    struct DummyProjection;
+    impl ToonProjection<1> for DummyProjection {
+        const TYPE_NAME: &'static str = "dummy";
+        const FIELDS: [&'static str; 1] = ["x"];
+        fn toon_rows(&self) -> Vec<[Value; 1]> {
+            vec![[Value::from("x")]]
+        }
+    }
+
+    #[test]
+    fn default_toon_total_count_and_hints_are_empty() {
+        let d = DummyProjection;
+        assert_eq!(d.toon_total_count(), None);
+        assert!(d.toon_hints().is_empty());
+    }
 }
 /// AC-009 (Walk half only -- `MonoklError::Walk`'s wrapped `ignore::Error`).
 /// `ignore::Error` never overrides `std::error::Error::source()`, so this
@@ -406,6 +422,27 @@ mod walk_tests {
             }),
         };
         assert!(matches!(innermost_walk_error(&wrapped), ignore::Error::InvalidDefinition));
+    }
+
+    #[test]
+    fn innermost_walk_error_partial_single_recurses() {
+        let inner = ignore::Error::InvalidDefinition;
+        let partial = ignore::Error::Partial(vec![inner]);
+        assert!(matches!(innermost_walk_error(&partial), ignore::Error::InvalidDefinition));
+    }
+
+    #[test]
+    fn innermost_walk_error_partial_non_single_does_not_recurse() {
+        let partial_empty = ignore::Error::Partial(vec![]);
+        assert!(matches!(innermost_walk_error(&partial_empty), ignore::Error::Partial(v) if v.is_empty()));
+        let partial_two = ignore::Error::Partial(vec![ignore::Error::InvalidDefinition, ignore::Error::InvalidDefinition]);
+        assert!(matches!(innermost_walk_error(&partial_two), ignore::Error::Partial(v) if v.len() == 2));
+    }
+
+    #[test]
+    fn walk_error_code_io_permission_denied_maps_to_forbidden() {
+        let io_err = ignore::Error::Io(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied"));
+        assert_eq!(walk_error_code(&io_err), michi::ErrorCode::Forbidden);
     }
 }
 /// Converts `Self` into a `michi::DomainError`, preserving classification
@@ -671,5 +708,12 @@ mod error_tests {
         let loop_err = ignore::Error::Loop { ancestor: std::path::PathBuf::from("/a"), child: std::path::PathBuf::from("/a/b") };
         let err = MonoklError::Walk { path: Utf8PathBuf::from("/x"), source: loop_err };
         assert_eq!(err.to_domain_error(ctx()).code, michi::ErrorCode::ExternalFailure);
+    }
+
+    #[test]
+    fn split_display_lines_handles_crlf_lf_cr_and_plain() {
+        assert_eq!(split_display_lines("a\r\nb\nc\rd"), vec!["a", "b", "c", "d"]);
+        assert_eq!(split_display_lines("single"), vec!["single"]);
+        assert_eq!(split_display_lines(""), vec![""]);
     }
 }
