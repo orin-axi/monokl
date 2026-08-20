@@ -398,6 +398,9 @@ fn innermost_walk_error(e: &ignore::Error) -> &ignore::Error {
 /// merge identical `InvalidInput` bodies) so this function stays a direct,
 /// literal match against the independently-compiled text AC-009 quotes.
 #[allow(clippy::match_same_arms)]
+// AC-009 locks `unreachable!()` as the correct body for the WithLineNumber/WithPath/WithDepth
+// wrapper arms below -- `innermost_walk_error` provably strips them before `leaf` can hold one.
+#[allow(clippy::unreachable)]
 fn walk_error_code(source: &ignore::Error) -> michi::ErrorCode {
     use michi::ErrorCode;
     let leaf = innermost_walk_error(source);
