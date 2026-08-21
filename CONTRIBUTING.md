@@ -1,5 +1,7 @@
 # Contributing
 
+By participating in this project, you agree to abide by the [Code of Conduct](./CODE_OF_CONDUCT.md). Found a security issue? See [SECURITY.md](./SECURITY.md) instead of opening a public issue.
+
 ## Where things stand
 
 monokl is spec-stage — no `Cargo.toml`, no `src/`, nothing to build or run yet. The design is fully written up in [`docs/spec/`](docs/spec/README.md). If you're picking this up to start implementation, read [`docs/spec/README.md`](docs/spec/README.md) first; it tells you which file to read for which subsystem.
