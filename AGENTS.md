@@ -19,6 +19,8 @@ No code exists yet — this is spec-stage. There's no `Cargo.toml`, no build, no
 - `LanguageAnalyzer` implementations must return fully owned data — no arena-borrowed AST nodes, no lifetimes tied to the parser's `Allocator`, ever, in any field of `FileAnalysis`.
 - `camino::Utf8Path`/`Utf8PathBuf` everywhere paths appear — not `std::path::Path`.
 - `rustc-hash`'s `FxHashMap`/`FxHashSet` for hot-path internal maps; `BTreeMap` for anything that gets serialized to JSON output (stable key order is load-bearing for determinism, see [PRINCIPLES.md](PRINCIPLES.md)).
+- `monokl-core` result types are not `Serialize`; wire shapes live in `monokl-agent` and `wisp-contracts`. Never add `#[derive(Serialize)]` to a core result type — see [`docs/spec/08-library-session-api.md`](docs/spec/08-library-session-api.md#9-plumbing-and-porcelain-two-crates).
+- No caps or pre-rendered truncation strings in `monokl-core`; counts only (`items_returned`/`items_total`), porcelain renders the marker.
 
 ## When you find a real bug in the spec
 
