@@ -34,4 +34,10 @@ Deliberately not built, and why:
 
 ## Language coverage isn't uniform, and shouldn't pretend to be
 
-A language gets a native parser and full `Structural`/`Exact` precision when it earns that investment — not by default, and not on a fixed roadmap regardless of what the parser ecosystem actually supports. TypeScript/JS and Rust have real, mature native-Rust parsers (OXC, `ra_ap_syntax`); Python and Java don't (checked directly against crates.io — nothing viable exists), so they use tree-sitter instead. Go got lucky: `gosyn` is a real, actively-maintained native option. Precision targets follow from what's actually achievable per language, declared explicitly via the `CapabilityPrecision` model — never silently assumed uniform across languages that aren't.
+A language gets a native parser and full `Structural`/`Exact` precision when it earns that investment — not by default, and not on a fixed roadmap regardless of what the parser ecosystem actually supports.
+
+- **TypeScript/JS and Rust** — real, mature native-Rust parsers (OXC, `ra_ap_syntax`).
+- **Python and Java** — no viable native option exists, checked directly against crates.io, so they use tree-sitter instead.
+- **Go** — `gosyn` is a real, actively-maintained native option.
+
+Precision targets follow from what's achievable per language, declared explicitly via the `CapabilityPrecision` model — never silently assumed uniform across languages that aren't.
